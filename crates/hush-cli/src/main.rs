@@ -4,6 +4,9 @@
 //! - hush check <action> - Check an action against policy
 //! - hush verify <receipt> - Verify a signed receipt
 //! - hush keygen - Generate a signing keypair
+//! - hush hash <file> - Compute hash of a file (SHA-256/Keccak-256)
+//! - hush sign --key <key> <file> - Sign a file
+//! - hush merkle root/proof/verify - Merkle tree operations
 //! - hush policy show - Show current policy
 //! - hush policy validate <file> - Validate a policy file
 //! - hush daemon start/stop/status/reload - Daemon management
@@ -12,9 +15,11 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::generate;
 use rand::Rng;
 use sha2::{Digest, Sha256};
+use std::io::{self, Read};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use hush_core::{Keypair, SignedReceipt};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use hush_core::{keccak256, sha256, Hash, Keypair, MerkleProof, MerkleTree, SignedReceipt};
 use hushclaw::{GuardContext, HushEngine, Policy, RuleSet};
 
 #[derive(Parser, Debug)]
@@ -79,6 +84,80 @@ enum Commands {
         /// Shell to generate completions for (bash, zsh, fish, powershell, elvish)
         #[arg(value_enum)]
         shell: clap_complete::Shell,
+    },
+
+    /// Compute hash of a file or stdin
+    Hash {
+        /// File to hash (use - for stdin)
+        file: String,
+
+        /// Hash algorithm (sha256 or keccak256)
+        #[arg(short, long, default_value = "sha256")]
+        algorithm: String,
+
+        /// Output format (hex or base64)
+        #[arg(short, long, default_value = "hex")]
+        format: String,
+    },
+
+    /// Sign a file with a private key
+    Sign {
+        /// Path to private key file
+        #[arg(short, long)]
+        key: String,
+
+        /// File to sign
+        file: String,
+
+        /// Verify signature after signing
+        #[arg(long)]
+        verify: bool,
+
+        /// Output file for signature (defaults to stdout)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
+    /// Merkle tree operations
+    Merkle {
+        #[command(subcommand)]
+        command: MerkleCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum MerkleCommands {
+    /// Compute Merkle root of files
+    Root {
+        /// Files to include in the tree
+        #[arg(required = true)]
+        files: Vec<String>,
+    },
+
+    /// Generate inclusion proof for a file
+    Proof {
+        /// Index of the leaf to prove (0-indexed)
+        #[arg(short, long)]
+        index: usize,
+
+        /// Files to include in the tree
+        #[arg(required = true)]
+        files: Vec<String>,
+    },
+
+    /// Verify an inclusion proof
+    Verify {
+        /// Expected Merkle root (hex)
+        #[arg(long)]
+        root: String,
+
+        /// Leaf file to verify
+        #[arg(long)]
+        leaf: String,
+
+        /// Path to proof JSON file
+        #[arg(long)]
+        proof: String,
     },
 }
 
@@ -428,6 +507,137 @@ async fn main() -> anyhow::Result<()> {
             let mut cmd = Cli::command();
             generate(shell, &mut cmd, "hush", &mut std::io::stdout());
         }
+
+        Commands::Hash {
+            file,
+            algorithm,
+            format,
+        } => {
+            // Read input
+            let data = if file == "-" {
+                let mut buf = Vec::new();
+                io::stdin().read_to_end(&mut buf)?;
+                buf
+            } else {
+                std::fs::read(&file)?
+            };
+
+            // Compute hash
+            let hash = match algorithm.as_str() {
+                "sha256" => sha256(&data),
+                "keccak256" => keccak256(&data),
+                _ => anyhow::bail!("Unknown algorithm: {}. Use sha256 or keccak256", algorithm),
+            };
+
+            // Format output
+            let output = match format.as_str() {
+                "hex" => hash.to_hex(),
+                "base64" => BASE64.encode(hash.as_bytes()),
+                _ => anyhow::bail!("Unknown format: {}. Use hex or base64", format),
+            };
+
+            println!("{}", output);
+        }
+
+        Commands::Sign {
+            key,
+            file,
+            verify,
+            output,
+        } => {
+            // Load private key
+            let key_hex = std::fs::read_to_string(&key)?.trim().to_string();
+            let keypair = Keypair::from_hex(&key_hex)
+                .map_err(|e| anyhow::anyhow!("Failed to load private key: {}", e))?;
+
+            // Read file to sign
+            let data = std::fs::read(&file)?;
+
+            // Sign the data
+            let signature = keypair.sign(&data);
+            let sig_hex = signature.to_hex();
+
+            // Output signature
+            if let Some(output_path) = &output {
+                std::fs::write(output_path, &sig_hex)?;
+                println!("Signature written to {}", output_path);
+            } else {
+                println!("{}", sig_hex);
+            }
+
+            // Optionally verify
+            if verify {
+                let public_key = keypair.public_key();
+                if public_key.verify(&data, &signature) {
+                    eprintln!("Signature verified successfully");
+                } else {
+                    anyhow::bail!("Signature verification failed!");
+                }
+            }
+        }
+
+        Commands::Merkle { command } => match command {
+            MerkleCommands::Root { files } => {
+                if files.is_empty() {
+                    anyhow::bail!("At least one file is required");
+                }
+
+                let leaves: Vec<Vec<u8>> = files
+                    .iter()
+                    .map(std::fs::read)
+                    .collect::<std::io::Result<_>>()?;
+
+                let tree = MerkleTree::from_leaves(&leaves)
+                    .map_err(|e| anyhow::anyhow!("Failed to build tree: {}", e))?;
+
+                println!("{}", tree.root().to_hex());
+            }
+
+            MerkleCommands::Proof { index, files } => {
+                if files.is_empty() {
+                    anyhow::bail!("At least one file is required");
+                }
+
+                let leaves: Vec<Vec<u8>> = files
+                    .iter()
+                    .map(std::fs::read)
+                    .collect::<std::io::Result<_>>()?;
+
+                let tree = MerkleTree::from_leaves(&leaves)
+                    .map_err(|e| anyhow::anyhow!("Failed to build tree: {}", e))?;
+
+                let proof = tree
+                    .inclusion_proof(index)
+                    .map_err(|e| anyhow::anyhow!("Failed to generate proof: {}", e))?;
+
+                let json = serde_json::to_string_pretty(&proof)?;
+                println!("{}", json);
+            }
+
+            MerkleCommands::Verify { root, leaf, proof } => {
+                // Parse expected root
+                let expected_root = Hash::from_hex(&root)
+                    .map_err(|e| anyhow::anyhow!("Invalid root hash: {}", e))?;
+
+                // Read leaf data
+                let leaf_data = std::fs::read(&leaf)?;
+
+                // Read and parse proof
+                let proof_json = std::fs::read_to_string(&proof)?;
+                let merkle_proof: MerkleProof = serde_json::from_str(&proof_json)?;
+
+                // Verify
+                if merkle_proof.verify(&leaf_data, &expected_root) {
+                    println!("VALID: Proof verified successfully");
+                    println!("  Root: {}", expected_root.to_hex());
+                    println!("  Leaf index: {}", merkle_proof.leaf_index);
+                    println!("  Tree size: {}", merkle_proof.tree_size);
+                } else {
+                    eprintln!("INVALID: Proof verification failed");
+                    std::process::exit(1);
+                }
+            }
+        },
     }
 
     Ok(())

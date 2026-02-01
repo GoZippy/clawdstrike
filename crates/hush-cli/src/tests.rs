@@ -11,7 +11,7 @@
 mod cli_parsing {
     use clap::Parser;
 
-    use crate::{Cli, Commands, DaemonCommands, PolicyCommands};
+    use crate::{Cli, Commands, DaemonCommands, MerkleCommands, PolicyCommands};
 
     #[test]
     fn test_check_command_parses_with_required_args() {
@@ -333,6 +333,176 @@ mod cli_parsing {
         let cli = Cli::parse_from(["hush", "-vvv", "policy", "list"]);
         assert_eq!(cli.verbose, 3);
     }
+
+    #[test]
+    fn test_hash_command_default_algorithm() {
+        let cli = Cli::parse_from(["hush", "hash", "file.txt"]);
+
+        match cli.command {
+            Commands::Hash {
+                file,
+                algorithm,
+                format,
+            } => {
+                assert_eq!(file, "file.txt");
+                assert_eq!(algorithm, "sha256");
+                assert_eq!(format, "hex");
+            }
+            _ => panic!("Expected Hash command"),
+        }
+    }
+
+    #[test]
+    fn test_hash_command_keccak256() {
+        let cli = Cli::parse_from(["hush", "hash", "--algorithm", "keccak256", "data.bin"]);
+
+        match cli.command {
+            Commands::Hash {
+                algorithm, file, ..
+            } => {
+                assert_eq!(algorithm, "keccak256");
+                assert_eq!(file, "data.bin");
+            }
+            _ => panic!("Expected Hash command"),
+        }
+    }
+
+    #[test]
+    fn test_hash_command_base64_format() {
+        let cli = Cli::parse_from(["hush", "hash", "--format", "base64", "file.txt"]);
+
+        match cli.command {
+            Commands::Hash { format, .. } => {
+                assert_eq!(format, "base64");
+            }
+            _ => panic!("Expected Hash command"),
+        }
+    }
+
+    #[test]
+    fn test_hash_command_stdin() {
+        let cli = Cli::parse_from(["hush", "hash", "-"]);
+
+        match cli.command {
+            Commands::Hash { file, .. } => {
+                assert_eq!(file, "-");
+            }
+            _ => panic!("Expected Hash command"),
+        }
+    }
+
+    #[test]
+    fn test_sign_command_basic() {
+        let cli = Cli::parse_from(["hush", "sign", "--key", "hush.key", "document.txt"]);
+
+        match cli.command {
+            Commands::Sign {
+                key,
+                file,
+                verify,
+                output,
+            } => {
+                assert_eq!(key, "hush.key");
+                assert_eq!(file, "document.txt");
+                assert!(!verify);
+                assert!(output.is_none());
+            }
+            _ => panic!("Expected Sign command"),
+        }
+    }
+
+    #[test]
+    fn test_sign_command_with_verify() {
+        let cli = Cli::parse_from([
+            "hush", "sign", "--key", "my.key", "--verify", "message.txt",
+        ]);
+
+        match cli.command {
+            Commands::Sign { verify, .. } => {
+                assert!(verify);
+            }
+            _ => panic!("Expected Sign command"),
+        }
+    }
+
+    #[test]
+    fn test_sign_command_with_output() {
+        let cli = Cli::parse_from([
+            "hush", "sign", "--key", "hush.key", "--output", "doc.sig", "document.txt",
+        ]);
+
+        match cli.command {
+            Commands::Sign { output, .. } => {
+                assert_eq!(output, Some("doc.sig".to_string()));
+            }
+            _ => panic!("Expected Sign command"),
+        }
+    }
+
+    #[test]
+    fn test_merkle_root_command() {
+        let cli = Cli::parse_from([
+            "hush", "merkle", "root", "file1.txt", "file2.txt", "file3.txt",
+        ]);
+
+        match cli.command {
+            Commands::Merkle { command } => match command {
+                MerkleCommands::Root { files } => {
+                    assert_eq!(files.len(), 3);
+                    assert_eq!(files[0], "file1.txt");
+                    assert_eq!(files[1], "file2.txt");
+                    assert_eq!(files[2], "file3.txt");
+                }
+                _ => panic!("Expected Root subcommand"),
+            },
+            _ => panic!("Expected Merkle command"),
+        }
+    }
+
+    #[test]
+    fn test_merkle_proof_command() {
+        let cli = Cli::parse_from([
+            "hush", "merkle", "proof", "--index", "1", "file1.txt", "file2.txt", "file3.txt",
+        ]);
+
+        match cli.command {
+            Commands::Merkle { command } => match command {
+                MerkleCommands::Proof { index, files } => {
+                    assert_eq!(index, 1);
+                    assert_eq!(files.len(), 3);
+                }
+                _ => panic!("Expected Proof subcommand"),
+            },
+            _ => panic!("Expected Merkle command"),
+        }
+    }
+
+    #[test]
+    fn test_merkle_verify_command() {
+        let cli = Cli::parse_from([
+            "hush",
+            "merkle",
+            "verify",
+            "--root",
+            "abc123",
+            "--leaf",
+            "file2.txt",
+            "--proof",
+            "proof.json",
+        ]);
+
+        match cli.command {
+            Commands::Merkle { command } => match command {
+                MerkleCommands::Verify { root, leaf, proof } => {
+                    assert_eq!(root, "abc123");
+                    assert_eq!(leaf, "file2.txt");
+                    assert_eq!(proof, "proof.json");
+                }
+                _ => panic!("Expected Verify subcommand"),
+            },
+            _ => panic!("Expected Merkle command"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -373,5 +543,84 @@ mod completions {
 
         let script = String::from_utf8(output).expect("valid UTF-8");
         assert!(script.contains("complete -c hush"), "Should have fish complete command");
+    }
+}
+
+#[cfg(test)]
+mod functional_tests {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+    use hush_core::{keccak256, sha256, Keypair, MerkleProof, MerkleTree};
+
+    #[test]
+    fn test_hash_sha256_known_vector() {
+        // "hello" -> known SHA-256 hash
+        let hash = sha256(b"hello");
+        assert_eq!(
+            hash.to_hex(),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    #[test]
+    fn test_hash_keccak256_known_vector() {
+        // "hello" -> known Keccak-256 hash
+        let hash = keccak256(b"hello");
+        assert_eq!(
+            hash.to_hex(),
+            "1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8"
+        );
+    }
+
+    #[test]
+    fn test_hash_base64_format() {
+        let hash = sha256(b"hello");
+        let b64 = BASE64.encode(hash.as_bytes());
+        // Base64 of the SHA-256 hash bytes
+        assert!(!b64.is_empty());
+        // Verify roundtrip
+        let decoded = BASE64.decode(&b64).expect("valid base64");
+        assert_eq!(decoded.as_slice(), hash.as_bytes());
+    }
+
+    #[test]
+    fn test_sign_and_verify() {
+        let keypair = Keypair::generate();
+        let message = b"test message for signing";
+
+        let signature = keypair.sign(message);
+        let public_key = keypair.public_key();
+
+        assert!(public_key.verify(message, &signature));
+        assert!(!public_key.verify(b"wrong message", &signature));
+    }
+
+    #[test]
+    fn test_merkle_root_deterministic() {
+        let leaves = vec![b"leaf1".to_vec(), b"leaf2".to_vec(), b"leaf3".to_vec()];
+
+        let tree1 = MerkleTree::from_leaves(&leaves).expect("valid tree");
+        let tree2 = MerkleTree::from_leaves(&leaves).expect("valid tree");
+
+        assert_eq!(tree1.root(), tree2.root());
+    }
+
+    #[test]
+    fn test_merkle_proof_verify() {
+        let leaves = vec![b"file1".to_vec(), b"file2".to_vec(), b"file3".to_vec()];
+        let tree = MerkleTree::from_leaves(&leaves).expect("valid tree");
+        let root = tree.root();
+
+        // Generate proof for leaf at index 1
+        let proof = tree.inclusion_proof(1).expect("valid proof");
+
+        // Serialize and deserialize (simulates file I/O)
+        let json = serde_json::to_string(&proof).expect("serialize");
+        let restored: MerkleProof = serde_json::from_str(&json).expect("deserialize");
+
+        // Verify the proof
+        assert!(restored.verify(&leaves[1], &root));
+
+        // Wrong leaf should fail
+        assert!(!restored.verify(&leaves[0], &root));
     }
 }
