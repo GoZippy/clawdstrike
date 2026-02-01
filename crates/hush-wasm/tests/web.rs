@@ -61,3 +61,51 @@ fn test_verify_ed25519_invalid_pubkey() {
     let result = verify_ed25519("invalid", b"test", &"0".repeat(128));
     assert!(result.is_err());
 }
+
+// ============================================================================
+// Receipt Verification Tests
+// ============================================================================
+
+#[wasm_bindgen_test]
+fn test_verify_receipt_parses() {
+    // Create a valid signed receipt JSON structure
+    // Note: signature won't match since we're using a dummy sig, but it should parse
+    let receipt_json = r#"{
+        "receipt": {
+            "version": "1.0.0",
+            "receipt_id": "test-001",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "content_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "verdict": {"passed": true}
+        },
+        "signatures": {
+            "signer": "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"
+        }
+    }"#;
+
+    // Should parse and return a result (even if signature doesn't match)
+    let result = verify_receipt(receipt_json, "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", None);
+    assert!(result.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_verify_receipt_invalid_json() {
+    let result = verify_receipt("not valid json", "abc123", None);
+    assert!(result.is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_hash_receipt() {
+    let receipt_json = r#"{
+        "version": "1.0.0",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "content_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "verdict": {"passed": true}
+    }"#;
+
+    let hash = hash_receipt(receipt_json, "sha256");
+    assert!(hash.is_ok());
+    let hash = hash.unwrap();
+    assert!(hash.starts_with("0x"));
+    assert_eq!(hash.len(), 66);
+}
