@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords = ["security", "daemon", "enforcement", "hushclaw"]
+categories = ["command-line-utilities", "authentication"]
+readme = "../../README.md"
 
 [[bin]]
 name = "hushd"
