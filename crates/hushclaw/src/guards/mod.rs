@@ -1,6 +1,25 @@
-//! Security guards for AI agent execution
+//! Security guards for AI agent execution.
 //!
 //! Guards implement async checks that can allow, block, or log actions.
+//!
+//! # Example
+//!
+//! ```rust
+//! use hushclaw::guards::{ForbiddenPathGuard, GuardAction, GuardContext, Guard};
+//!
+//! # tokio_test::block_on(async {
+//! let guard = ForbiddenPathGuard::new();
+//! let context = GuardContext::new();
+//!
+//! // Check a safe path
+//! let result = guard.check(&GuardAction::FileAccess("/app/main.rs"), &context).await;
+//! assert!(result.allowed);
+//!
+//! // Check a forbidden path
+//! let result = guard.check(&GuardAction::FileAccess("/home/user/.ssh/id_rsa"), &context).await;
+//! assert!(!result.allowed);
+//! # })
+//! ```
 
 mod egress_allowlist;
 mod forbidden_path;
