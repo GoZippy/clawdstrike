@@ -1,0 +1,26 @@
+# Simple hushd Docker Compose example
+# Usage: docker compose up -d
+
+services:
+  hushd:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.hushd
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./policy.yaml:/etc/hushd/policy.yaml:ro
+      - ./config.yaml:/etc/hushd/config.yaml:ro
+      - hushd-data:/var/lib/hushd
+    environment:
+      - HUSH_LOG_LEVEL=info
+      - HUSH_API_KEY=${HUSH_API_KEY:-changeme}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  hushd-data:
