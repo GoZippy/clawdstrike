@@ -11,7 +11,7 @@
 mod cli_parsing {
     use clap::Parser;
 
-    use crate::{Cli, Commands, PolicyCommands};
+    use crate::{Cli, Commands, DaemonCommands, PolicyCommands};
 
     #[test]
     fn test_check_command_parses_with_required_args() {
@@ -188,6 +188,85 @@ mod cli_parsing {
                 assert!(matches!(command, PolicyCommands::List));
             }
             _ => panic!("Expected Policy command"),
+        }
+    }
+
+    #[test]
+    fn test_daemon_start_defaults() {
+        let cli = Cli::parse_from(["hush", "daemon", "start"]);
+
+        match cli.command {
+            Commands::Daemon { command } => match command {
+                DaemonCommands::Start { config, bind, port } => {
+                    assert!(config.is_none());
+                    assert_eq!(bind, "127.0.0.1");
+                    assert_eq!(port, 9876);
+                }
+                _ => panic!("Expected Start subcommand"),
+            },
+            _ => panic!("Expected Daemon command"),
+        }
+    }
+
+    #[test]
+    fn test_daemon_start_with_options() {
+        let cli = Cli::parse_from([
+            "hush",
+            "daemon",
+            "start",
+            "--config",
+            "/etc/hush/config.yaml",
+            "--bind",
+            "0.0.0.0",
+            "--port",
+            "8080",
+        ]);
+
+        match cli.command {
+            Commands::Daemon { command } => match command {
+                DaemonCommands::Start { config, bind, port } => {
+                    assert_eq!(config, Some("/etc/hush/config.yaml".to_string()));
+                    assert_eq!(bind, "0.0.0.0");
+                    assert_eq!(port, 8080);
+                }
+                _ => panic!("Expected Start subcommand"),
+            },
+            _ => panic!("Expected Daemon command"),
+        }
+    }
+
+    #[test]
+    fn test_daemon_status_default_url() {
+        let cli = Cli::parse_from(["hush", "daemon", "status"]);
+
+        match cli.command {
+            Commands::Daemon { command } => match command {
+                DaemonCommands::Status { url } => {
+                    assert_eq!(url, "http://127.0.0.1:9876");
+                }
+                _ => panic!("Expected Status subcommand"),
+            },
+            _ => panic!("Expected Daemon command"),
+        }
+    }
+
+    #[test]
+    fn test_daemon_reload() {
+        let cli = Cli::parse_from([
+            "hush",
+            "daemon",
+            "reload",
+            "http://localhost:9999",
+        ]);
+
+        match cli.command {
+            Commands::Daemon { command } => match command {
+                DaemonCommands::Reload { url } => {
+                    assert_eq!(url, "http://localhost:9999");
+                }
+                _ => panic!("Expected Reload subcommand"),
+            },
+            _ => panic!("Expected Daemon command"),
         }
     }
 }
