@@ -1,7 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 
-use wasm_bindgen_test::*;
 use hush_wasm::*;
+use wasm_bindgen_test::*;
 
 // Tests can run in both browser and Node.js
 // Use `wasm-pack test --node` for Node.js or `wasm-pack test --headless --chrome` for browser
@@ -84,7 +84,11 @@ fn test_verify_receipt_parses() {
     }"#;
 
     // Should parse and return a result (even if signature doesn't match)
-    let result = verify_receipt(receipt_json, "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", None);
+    let result = verify_receipt(
+        receipt_json,
+        "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        None,
+    );
     assert!(result.is_ok());
 }
 

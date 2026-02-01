@@ -7,8 +7,7 @@ use hush_core::{Keypair, Receipt, SignedReceipt, Verdict};
 fn test_full_receipt_workflow() {
     // Create a receipt
     let content_hash = hush_core::sha256(b"test content");
-    let receipt = Receipt::new(content_hash, Verdict::pass())
-        .with_id("integration-test-001");
+    let receipt = Receipt::new(content_hash, Verdict::pass()).with_id("integration-test-001");
 
     // Sign it
     let keypair = Keypair::generate();
@@ -31,9 +30,7 @@ fn test_merkle_proof_workflow() {
     use hush_core::MerkleTree;
 
     // Create leaves
-    let leaves: Vec<Vec<u8>> = (0..5)
-        .map(|i| format!("leaf-{}", i).into_bytes())
-        .collect();
+    let leaves: Vec<Vec<u8>> = (0..5).map(|i| format!("leaf-{}", i).into_bytes()).collect();
 
     // Build tree
     let tree = MerkleTree::from_leaves(&leaves).unwrap();
@@ -55,13 +52,13 @@ fn test_merkle_proof_workflow() {
 #[test]
 fn test_hash_functions() {
     let data = b"hello world";
-    
+
     let sha_hash = hush_core::sha256(data);
     assert_eq!(sha_hash.to_hex().len(), 64);
-    
+
     let keccak_hash = hush_core::keccak256(data);
     assert_eq!(keccak_hash.to_hex().len(), 64);
-    
+
     // Hashes should be different
     assert_ne!(sha_hash, keccak_hash);
 }
@@ -70,12 +67,12 @@ fn test_hash_functions() {
 fn test_signature_verification() {
     let keypair = Keypair::generate();
     let message = b"test message for signing";
-    
+
     let signature = keypair.sign(message);
-    
+
     // Valid verification
     assert!(keypair.public_key().verify(message, &signature));
-    
+
     // Wrong message should fail
     assert!(!keypair.public_key().verify(b"wrong message", &signature));
 }

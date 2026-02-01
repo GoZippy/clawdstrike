@@ -17,6 +17,7 @@ Hushclaw provides runtime security enforcement for AI agents, including:
 |-------|-------------|
 | `hush-core` | Cryptographic primitives (Ed25519, SHA-256, Keccak-256, Merkle trees, receipts) |
 | `hush-proxy` | Network proxy utilities (DNS/SNI extraction, domain policy) |
+| `hush-wasm` | WebAssembly bindings for browser/Node.js verification |
 | `hushclaw` | Security guards and policy engine |
 | `hush-cli` | Command-line interface |
 | `hushd` | Security daemon (WIP) |

@@ -2,14 +2,11 @@
 //!
 //! This crate provides browser-side verification of hushclaw attestations.
 
-use wasm_bindgen::prelude::*;
 use hush_core::{
-    sha256, keccak256,
-    Hash, PublicKey, Signature,
-    Receipt, SignedReceipt,
-    MerkleProof, MerkleTree,
-    receipt::PublicKeySet,
+    keccak256, receipt::PublicKeySet, sha256, Hash, MerkleProof, MerkleTree, PublicKey, Receipt,
+    Signature, SignedReceipt,
 };
+use wasm_bindgen::prelude::*;
 
 /// Initialize the WASM module (call once at startup)
 #[wasm_bindgen(start)]
@@ -78,10 +75,8 @@ pub fn verify_ed25519(
     message: &[u8],
     signature_hex: &str,
 ) -> Result<bool, JsError> {
-    let pubkey = PublicKey::from_hex(public_key_hex)
-        .map_err(|e| JsError::new(&e.to_string()))?;
-    let sig = Signature::from_hex(signature_hex)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let pubkey = PublicKey::from_hex(public_key_hex).map_err(|e| JsError::new(&e.to_string()))?;
+    let sig = Signature::from_hex(signature_hex).map_err(|e| JsError::new(&e.to_string()))?;
 
     Ok(pubkey.verify(message, &sig))
 }
@@ -116,12 +111,11 @@ pub fn verify_receipt(
     let signed: SignedReceipt = serde_json::from_str(receipt_json)
         .map_err(|e| JsError::new(&format!("Invalid receipt JSON: {}", e)))?;
 
-    let signer_pk = PublicKey::from_hex(signer_pubkey_hex)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let signer_pk =
+        PublicKey::from_hex(signer_pubkey_hex).map_err(|e| JsError::new(&e.to_string()))?;
 
     let cosigner_pk = match cosigner_pubkey_hex {
-        Some(hex) => Some(PublicKey::from_hex(&hex)
-            .map_err(|e| JsError::new(&e.to_string()))?),
+        Some(hex) => Some(PublicKey::from_hex(&hex).map_err(|e| JsError::new(&e.to_string()))?),
         None => None,
     };
 
@@ -145,18 +139,20 @@ pub fn verify_receipt(
 /// # Returns
 /// Hex-encoded hash with 0x prefix
 #[wasm_bindgen]
-pub fn hash_receipt(
-    receipt_json: &str,
-    algorithm: &str,
-) -> Result<String, JsError> {
+pub fn hash_receipt(receipt_json: &str, algorithm: &str) -> Result<String, JsError> {
     let receipt: Receipt = serde_json::from_str(receipt_json)
         .map_err(|e| JsError::new(&format!("Invalid receipt JSON: {}", e)))?;
 
     let hash = match algorithm {
         "sha256" => receipt.hash_sha256(),
         "keccak256" => receipt.hash_keccak256(),
-        _ => return Err(JsError::new("Invalid algorithm: use 'sha256' or 'keccak256'")),
-    }.map_err(|e| JsError::new(&e.to_string()))?;
+        _ => {
+            return Err(JsError::new(
+                "Invalid algorithm: use 'sha256' or 'keccak256'",
+            ))
+        }
+    }
+    .map_err(|e| JsError::new(&e.to_string()))?;
 
     Ok(hash.to_hex_prefixed())
 }
@@ -174,7 +170,8 @@ pub fn get_canonical_json(receipt_json: &str) -> Result<String, JsError> {
     let receipt: Receipt = serde_json::from_str(receipt_json)
         .map_err(|e| JsError::new(&format!("Invalid receipt JSON: {}", e)))?;
 
-    receipt.to_canonical_json()
+    receipt
+        .to_canonical_json()
         .map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -197,10 +194,8 @@ pub fn verify_merkle_proof(
     proof_json: &str,
     root_hex: &str,
 ) -> Result<bool, JsError> {
-    let leaf = Hash::from_hex(leaf_hash_hex)
-        .map_err(|e| JsError::new(&e.to_string()))?;
-    let root = Hash::from_hex(root_hex)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let leaf = Hash::from_hex(leaf_hash_hex).map_err(|e| JsError::new(&e.to_string()))?;
+    let root = Hash::from_hex(root_hex).map_err(|e| JsError::new(&e.to_string()))?;
     let proof: MerkleProof = serde_json::from_str(proof_json)
         .map_err(|e| JsError::new(&format!("Invalid proof JSON: {}", e)))?;
 
@@ -225,8 +220,7 @@ pub fn compute_merkle_root(leaf_hashes_json: &str) -> Result<String, JsError> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| JsError::new(&e.to_string()))?;
 
-    let tree = MerkleTree::from_hashes(hashes)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let tree = MerkleTree::from_hashes(hashes).map_err(|e| JsError::new(&e.to_string()))?;
 
     Ok(tree.root().to_hex_prefixed())
 }
@@ -240,10 +234,7 @@ pub fn compute_merkle_root(leaf_hashes_json: &str) -> Result<String, JsError> {
 /// # Returns
 /// JSON-serialized MerkleProof
 #[wasm_bindgen]
-pub fn generate_merkle_proof(
-    leaf_hashes_json: &str,
-    leaf_index: usize,
-) -> Result<String, JsError> {
+pub fn generate_merkle_proof(leaf_hashes_json: &str, leaf_index: usize) -> Result<String, JsError> {
     let hashes_hex: Vec<String> = serde_json::from_str(leaf_hashes_json)
         .map_err(|e| JsError::new(&format!("Invalid JSON: {}", e)))?;
 
@@ -253,12 +244,11 @@ pub fn generate_merkle_proof(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| JsError::new(&e.to_string()))?;
 
-    let tree = MerkleTree::from_hashes(hashes)
+    let tree = MerkleTree::from_hashes(hashes).map_err(|e| JsError::new(&e.to_string()))?;
+
+    let proof = tree
+        .inclusion_proof(leaf_index)
         .map_err(|e| JsError::new(&e.to_string()))?;
 
-    let proof = tree.inclusion_proof(leaf_index)
-        .map_err(|e| JsError::new(&e.to_string()))?;
-
-    serde_json::to_string(&proof)
-        .map_err(|e| JsError::new(&format!("Serialization failed: {}", e)))
+    serde_json::to_string(&proof).map_err(|e| JsError::new(&format!("Serialization failed: {}", e)))
 }
