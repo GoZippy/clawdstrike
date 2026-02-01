@@ -102,27 +102,55 @@ export class ForbiddenPathGuard implements Guard {
 }
 
 /**
+ * Escape regex metacharacters in a string.
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * Simple glob matcher supporting:
  * - * matches any characters except /
  * - ** matches any characters including /
  * - ? matches any single character
  */
 function matchGlob(path: string, pattern: string): boolean {
-  // Convert glob to regex
-  let regex = pattern
-    .replace(/\*\*/g, "\u0000") // Placeholder for **
-    .replace(/\*/g, "[^/]*")
-    .replace(/\u0000/g, ".*")
-    .replace(/\?/g, ".");
+  // Split pattern into segments, preserving glob operators
+  let regex = "";
+  let i = 0;
 
-  // Escape dots that aren't part of patterns
-  regex = regex.replace(/\.(?!\*)/g, "\\.");
+  while (i < pattern.length) {
+    if (pattern[i] === "*") {
+      if (pattern[i + 1] === "*") {
+        // ** matches any characters including /
+        regex += ".*";
+        i += 2;
+      } else {
+        // * matches any characters except /
+        regex += "[^/]*";
+        i++;
+      }
+    } else if (pattern[i] === "?") {
+      // ? matches any single character
+      regex += ".";
+      i++;
+    } else {
+      // Escape the character if it's a regex metacharacter
+      regex += escapeRegex(pattern[i]);
+      i++;
+    }
+  }
 
   // Anchor the pattern
-  if (!regex.startsWith(".*") && !regex.startsWith("/")) {
+  if (!regex.startsWith(".*") && !pattern.startsWith("/")) {
     regex = "(^|.*/)" + regex;
   }
   regex = "^" + regex + "$";
 
-  return new RegExp(regex).test(path);
+  try {
+    return new RegExp(regex).test(path);
+  } catch {
+    // Invalid regex, treat as no match
+    return false;
+  }
 }

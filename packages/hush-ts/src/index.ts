@@ -3,7 +3,8 @@
  * @packageDocumentation
  */
 
-export const VERSION = "0.1.0";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+export const VERSION: string = require("../package.json").version;
 
 // Crypto
 export {
@@ -48,4 +49,11 @@ export {
   type EgressAllowlistConfig,
   SecretLeakGuard,
   type SecretLeakConfig,
+  PatchIntegrityGuard,
+  type PatchIntegrityConfig,
+  type PatchAnalysis,
+  type ForbiddenMatch,
+  McpToolGuard,
+  type McpToolConfig,
+  ToolDecision,
 } from "./guards";

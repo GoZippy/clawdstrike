@@ -64,14 +64,21 @@ Centralized policy enforcement:
 
 ## Known Limitations (v0.1.0)
 
-The following security features are **not yet implemented** in v0.1.0:
+The following security features have limited or no support in v0.1.0:
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Rate limiting | Planned | No request throttling on daemon API |
+| Rate limiting | Implemented | Per-IP token bucket with trusted proxy support |
 | TPM integration | Planned | Hardware key storage not supported |
 | Audit log encryption | Planned | Logs stored in plaintext SQLite |
 | Network isolation | Partial | Relies on policy, no kernel enforcement |
+
+### Rate Limiting Security Note
+
+Rate limiting trusts `X-Forwarded-For` headers only from configured `trusted_proxies`.
+If deploying behind a reverse proxy, configure `trusted_proxies` with your proxy IPs.
+The `trust_xff_from_any` option is available but **not recommended for production**
+as it allows rate limit bypass via header spoofing.
 
 ## Security Best Practices
 

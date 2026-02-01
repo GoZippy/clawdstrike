@@ -52,6 +52,12 @@ pub struct RateLimitConfig {
     /// Burst size (number of requests allowed in a burst)
     #[serde(default = "default_burst_size")]
     pub burst_size: u32,
+    /// Trusted proxy IP addresses (X-Forwarded-For only trusted from these)
+    #[serde(default)]
+    pub trusted_proxies: Vec<String>,
+    /// Whether to trust X-Forwarded-For from any source (INSECURE - use trusted_proxies instead)
+    #[serde(default)]
+    pub trust_xff_from_any: bool,
 }
 
 fn default_rate_limit_enabled() -> bool {
@@ -72,6 +78,8 @@ impl Default for RateLimitConfig {
             enabled: default_rate_limit_enabled(),
             requests_per_second: default_requests_per_second(),
             burst_size: default_burst_size(),
+            trusted_proxies: Vec::new(),
+            trust_xff_from_any: false,
         }
     }
 }

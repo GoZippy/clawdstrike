@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import fnmatch
 from dataclasses import dataclass, field
 from typing import List, Optional
+
+from wcmatch import glob as wcglob
 
 from hush.guards.base import Guard, GuardAction, GuardContext, GuardResult, Severity
 
@@ -80,12 +81,12 @@ class ForbiddenPathGuard(Guard):
 
         # Check exceptions first
         for exception in self._config.exceptions:
-            if fnmatch.fnmatch(normalized, exception):
+            if wcglob.globmatch(normalized, exception, flags=wcglob.GLOBSTAR):
                 return False
 
         # Check forbidden patterns
         for pattern in self._config.patterns:
-            if fnmatch.fnmatch(normalized, pattern):
+            if wcglob.globmatch(normalized, pattern, flags=wcglob.GLOBSTAR):
                 return True
 
         return False

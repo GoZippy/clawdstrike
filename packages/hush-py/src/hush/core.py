@@ -1,7 +1,7 @@
 """Pure Python cryptographic primitives.
 
 Provides SHA-256, Keccak-256 hashing and Ed25519 signature verification.
-Uses PyNaCl for cryptographic operations.
+Uses PyNaCl for cryptographic operations and pycryptodome for Keccak-256.
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 from typing import Union
 
+from Crypto.Hash import keccak as keccak_hash
 from nacl.signing import SigningKey, VerifyKey
 from nacl.exceptions import BadSignatureError
 
@@ -30,8 +31,8 @@ def sha256(data: Union[bytes, str]) -> bytes:
 def keccak256(data: Union[bytes, str]) -> bytes:
     """Compute Keccak-256 hash.
 
-    Note: This uses SHA3-256 which is the standardized version.
-    For Ethereum-compatible Keccak, use a specialized library.
+    Uses the original Keccak-256 algorithm (pre-SHA3 standardization),
+    compatible with Ethereum and other blockchain implementations.
 
     Args:
         data: Input bytes or string to hash
@@ -41,7 +42,7 @@ def keccak256(data: Union[bytes, str]) -> bytes:
     """
     if isinstance(data, str):
         data = data.encode("utf-8")
-    return hashlib.sha3_256(data).digest()
+    return keccak_hash.new(digest_bits=256, data=data).digest()
 
 
 def generate_keypair() -> tuple[bytes, bytes]:

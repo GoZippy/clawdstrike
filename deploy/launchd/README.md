@@ -185,3 +185,44 @@ sudo launchctl load /Library/LaunchDaemons/dev.hushclaw.hushd.plist
 launchctl unload ~/Library/LaunchAgents/dev.hushclaw.hushd.plist
 launchctl load ~/Library/LaunchAgents/dev.hushclaw.hushd.plist
 ```
+
+## Security Hardening
+
+### Sandboxing (Optional)
+
+Unlike systemd which has built-in sandboxing options, launchd relies on macOS
+sandboxing via `sandbox-exec`. For enhanced security in production, you can
+run hushd under a sandbox profile.
+
+Create `/usr/local/etc/hushd/sandbox.sb`:
+
+```lisp
+(version 1)
+(deny default)
+(allow process-exec (literal "/usr/local/bin/hushd"))
+(allow file-read* (subpath "/usr/local/etc/hushd"))
+(allow file-read-data (subpath "/usr/local/lib"))
+(allow file-write* (subpath "/usr/local/var/lib/hushd"))
+(allow file-write* (subpath "/usr/local/var/log/hushd"))
+(allow network-bind (local tcp "*:9876"))
+(allow network-outbound)
+(allow sysctl-read)
+(allow mach-lookup)
+```
+
+Then modify the plist ProgramArguments:
+
+```xml
+<key>ProgramArguments</key>
+<array>
+    <string>/usr/bin/sandbox-exec</string>
+    <string>-f</string>
+    <string>/usr/local/etc/hushd/sandbox.sb</string>
+    <string>/usr/local/bin/hushd</string>
+    <string>--config</string>
+    <string>/usr/local/etc/hushd/config.yaml</string>
+</array>
+```
+
+**Note:** Sandbox profiles require testing on your specific macOS version.
+The systemd service file includes more comprehensive hardening by default.
