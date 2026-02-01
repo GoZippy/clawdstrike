@@ -1,0 +1,40 @@
+[tools]
+rust = "1.75"
+node = "20"
+python = "3.12"
+
+[tasks.check]
+description = "Run cargo check on workspace"
+run = "cargo check --workspace"
+
+[tasks.test]
+description = "Run all tests"
+run = "cargo test --workspace"
+
+[tasks.lint]
+description = "Run clippy lints"
+run = "cargo clippy --workspace -- -D warnings"
+
+[tasks.fmt]
+description = "Format code"
+run = "cargo fmt --all"
+
+[tasks.fmt-check]
+description = "Check code formatting"
+run = "cargo fmt --all -- --check"
+
+[tasks.deny]
+description = "Run cargo-deny checks"
+run = "cargo deny check"
+
+[tasks.doc]
+description = "Build documentation"
+run = "cargo doc --no-deps --all-features"
+
+[tasks.ci]
+description = "Run full CI checks locally"
+run = """
+cargo fmt --all -- --check
+cargo clippy --workspace -- -D warnings
+cargo test --workspace
+"""
