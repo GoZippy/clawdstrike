@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Version bumping script for hushclaw
+# Version bump script for hushclaw
 # Usage: ./scripts/bump-version.sh <version>
 # Example: ./scripts/bump-version.sh 0.2.0
 
@@ -15,43 +15,46 @@ fi
 
 # Validate version format (semver)
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-    echo "Error: Invalid version format. Use semver (e.g., 0.2.0 or 0.2.0-alpha.1)"
+    echo "Error: Version must be in semver format (e.g., 0.2.0 or 0.2.0-alpha.1)"
     exit 1
 fi
 
 echo "Bumping version to $VERSION..."
 
+# Detect sed flavor (GNU vs BSD)
+if sed --version 2>/dev/null | grep -q GNU; then
+    SED_INPLACE="sed -i"
+else
+    SED_INPLACE="sed -i ''"
+fi
+
 # Update root Cargo.toml workspace version
-sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" Cargo.toml
-rm -f Cargo.toml.bak
+echo "  Updating Cargo.toml workspace version..."
+$SED_INPLACE "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" Cargo.toml
 
 # Update all crate Cargo.toml files that use workspace version inheritance
-# (They inherit from workspace, so we only need to update root)
+# (They inherit from workspace, so we only need to update the root)
 
 # Update package.json files
 if [[ -f "packages/hushclaw-openclaw/package.json" ]]; then
-    # Use node/npm if available, otherwise sed
-    if command -v npm &> /dev/null; then
-        (cd packages/hushclaw-openclaw && npm version "$VERSION" --no-git-tag-version --allow-same-version)
+    echo "  Updating packages/hushclaw-openclaw/package.json..."
+    # Use node/jq if available, otherwise sed
+    if command -v node &> /dev/null; then
+        node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('packages/hushclaw-openclaw/package.json', 'utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync('packages/hushclaw-openclaw/package.json', JSON.stringify(pkg, null, 2) + '\n');
+        "
     else
-        sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" packages/hushclaw-openclaw/package.json
-        rm -f packages/hushclaw-openclaw/package.json.bak
+        $SED_INPLACE "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" packages/hushclaw-openclaw/package.json
     fi
-    echo "  Updated packages/hushclaw-openclaw/package.json"
 fi
 
 # Update pyproject.toml if it exists
 if [[ -f "packages/hush-py/pyproject.toml" ]]; then
-    sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" packages/hush-py/pyproject.toml
-    rm -f packages/hush-py/pyproject.toml.bak
-    echo "  Updated packages/hush-py/pyproject.toml"
-fi
-
-# Update Homebrew formula URL (placeholder - actual SHA will be updated after release)
-if [[ -f "HomebrewFormula/hush.rb" ]]; then
-    sed -i.bak "s|/v[0-9]*\.[0-9]*\.[0-9]*[^/]*/|/v$VERSION/|g" HomebrewFormula/hush.rb
-    rm -f HomebrewFormula/hush.rb.bak
-    echo "  Updated HomebrewFormula/hush.rb (SHA256 must be updated after release)"
+    echo "  Updating packages/hush-py/pyproject.toml..."
+    $SED_INPLACE "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" packages/hush-py/pyproject.toml
 fi
 
 echo ""
@@ -59,7 +62,6 @@ echo "Version bumped to $VERSION"
 echo ""
 echo "Next steps:"
 echo "  1. Review changes: git diff"
-echo "  2. Update CHANGELOG.md"
-echo "  3. Commit: git commit -am 'chore: bump version to $VERSION'"
-echo "  4. Tag: git tag -a v$VERSION -m 'Release v$VERSION'"
-echo "  5. Push: git push origin main --tags"
+echo "  2. Commit: git commit -am \"chore: bump version to \$VERSION\""
+echo "  3. Tag: git tag -a v\$VERSION -m \"Release v\$VERSION\""
+echo "  4. Push: git push && git push --tags"
