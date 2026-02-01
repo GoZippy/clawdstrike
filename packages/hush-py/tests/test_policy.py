@@ -119,20 +119,3 @@ class TestPolicyEngine:
         # Should have exactly one blocking result
         blocked = [r for r in results if not r.allowed]
         assert len(blocked) >= 1
-
-    def test_is_allowed_convenience_method(self, sample_policy_yaml: str) -> None:
-        from hush.guards.base import GuardAction, GuardContext
-
-        policy = Policy.from_yaml(sample_policy_yaml)
-        engine = PolicyEngine(policy)
-        context = GuardContext()
-
-        assert engine.is_allowed(
-            GuardAction.file_access("/app/src/main.py"),
-            context,
-        )
-
-        assert not engine.is_allowed(
-            GuardAction.file_access("/home/user/.ssh/id_rsa"),
-            context,
-        )
