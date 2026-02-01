@@ -4,6 +4,9 @@
 //! - hush check <action> - Check an action against policy
 //! - hush verify <receipt> - Verify a signed receipt
 //! - hush keygen - Generate a signing keypair
+//! - hush hash <file> - Compute hash of a file (SHA-256/Keccak-256)
+//! - hush sign --key <key> <file> - Sign a file
+//! - hush merkle root/proof/verify - Merkle tree operations
 //! - hush policy show - Show current policy
 //! - hush policy validate <file> - Validate a policy file
 //! - hush daemon start/stop/status/reload - Daemon management
