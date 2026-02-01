@@ -173,4 +173,47 @@ mod tests {
         let data = [0x17, 0x03, 0x03, 0x00, 0x01, 0x00]; // Not handshake type
         assert_eq!(extract_sni(&data).unwrap(), None);
     }
+
+    #[test]
+    fn test_extract_sni_with_hostname() {
+        // Real TLS ClientHello with SNI = "example.com"
+        let client_hello = include_bytes!("../testdata/client_hello_example.bin");
+        let result = extract_sni(client_hello).unwrap();
+        assert_eq!(result, Some("example.com".to_string()));
+    }
+
+    #[test]
+    fn test_extract_sni_no_sni_extension() {
+        // ClientHello without SNI extension
+        let client_hello = include_bytes!("../testdata/client_hello_no_sni.bin");
+        let result = extract_sni(client_hello).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_sni_http_request() {
+        // HTTP request (not TLS)
+        let http = b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
+        assert_eq!(extract_sni(http).unwrap(), None);
+    }
+
+    #[test]
+    fn test_extract_sni_invalid_version() {
+        // Invalid TLS version
+        let data = [0x16, 0x02, 0x00, 0x00, 0x01, 0x00]; // SSL 2.0
+        assert_eq!(extract_sni(&data).unwrap(), None);
+    }
+
+    #[test]
+    fn test_extract_sni_empty() {
+        assert_eq!(extract_sni(&[]).unwrap(), None);
+    }
+
+    #[test]
+    fn test_extract_sni_truncated_record() {
+        // Handshake header says 100 bytes but data is shorter
+        let data = [0x16, 0x03, 0x03, 0x00, 0x64, 0x01, 0x00, 0x00, 0x05];
+        let result = extract_sni(&data);
+        assert!(result.is_err()); // Should error on incomplete record
+    }
 }
