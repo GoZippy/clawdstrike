@@ -1,0 +1,32 @@
+{
+  "name": "@hushclaw/wasm",
+  "version": "0.1.0",
+  "description": "WebAssembly bindings for hushclaw cryptographic verification",
+  "main": "hush_wasm.js",
+  "types": "hush_wasm.d.ts",
+  "files": [
+    "hush_wasm_bg.wasm",
+    "hush_wasm.js",
+    "hush_wasm.d.ts",
+    "hush_wasm_bg.wasm.d.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hushclaw/hushclaw"
+  },
+  "keywords": [
+    "wasm",
+    "cryptography",
+    "verification",
+    "attestation",
+    "ed25519",
+    "merkle",
+    "hushclaw"
+  ],
+  "author": "Hushclaw Contributors",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/hushclaw/hushclaw/issues"
+  },
+  "homepage": "https://github.com/hushclaw/hushclaw#readme"
+}
