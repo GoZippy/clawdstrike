@@ -11,7 +11,7 @@
 mod cli_parsing {
     use clap::Parser;
 
-    use crate::{Cli, Commands};
+    use crate::{Cli, Commands, PolicyCommands};
 
     #[test]
     fn test_check_command_parses_with_required_args() {
@@ -131,6 +131,63 @@ mod cli_parsing {
                 assert_eq!(output, "/custom/path/my.key");
             }
             _ => panic!("Expected Keygen command"),
+        }
+    }
+
+    #[test]
+    fn test_policy_show_default_ruleset() {
+        let cli = Cli::parse_from(["hush", "policy", "show"]);
+
+        match cli.command {
+            Commands::Policy { command } => match command {
+                PolicyCommands::Show { ruleset } => {
+                    assert_eq!(ruleset, "default");
+                }
+                _ => panic!("Expected Show subcommand"),
+            },
+            _ => panic!("Expected Policy command"),
+        }
+    }
+
+    #[test]
+    fn test_policy_show_custom_ruleset() {
+        let cli = Cli::parse_from(["hush", "policy", "show", "strict"]);
+
+        match cli.command {
+            Commands::Policy { command } => match command {
+                PolicyCommands::Show { ruleset } => {
+                    assert_eq!(ruleset, "strict");
+                }
+                _ => panic!("Expected Show subcommand"),
+            },
+            _ => panic!("Expected Policy command"),
+        }
+    }
+
+    #[test]
+    fn test_policy_validate() {
+        let cli = Cli::parse_from(["hush", "policy", "validate", "policy.yaml"]);
+
+        match cli.command {
+            Commands::Policy { command } => match command {
+                PolicyCommands::Validate { file } => {
+                    assert_eq!(file, "policy.yaml");
+                }
+                _ => panic!("Expected Validate subcommand"),
+            },
+            _ => panic!("Expected Policy command"),
+        }
+    }
+
+    #[test]
+    fn test_policy_list() {
+        let cli = Cli::parse_from(["hush", "policy", "list"]);
+
+        match cli.command {
+            Commands::Policy { command } => {
+                assert!(matches!(command, PolicyCommands::List));
+            }
+            _ => panic!("Expected Policy command"),
         }
     }
 }
