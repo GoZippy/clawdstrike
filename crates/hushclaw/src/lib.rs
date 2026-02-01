@@ -1,16 +1,43 @@
-//! Hushclaw - Security Guards and Policy Engine
+//! # Hushclaw - Security Guards and Policy Engine
 //!
 //! This crate provides security guards for AI agent execution:
-//! - ForbiddenPathGuard: Blocks access to sensitive paths
-//! - EgressAllowlistGuard: Controls network egress
-//! - SecretLeakGuard: Detects potential secret exposure
-//! - PatchIntegrityGuard: Validates patch safety
-//! - McpToolGuard: Restricts MCP tool invocations
+//! - `ForbiddenPathGuard`: Blocks access to sensitive paths
+//! - `EgressAllowlistGuard`: Controls network egress
+//! - `SecretLeakGuard`: Detects potential secret exposure
+//! - `PatchIntegrityGuard`: Validates patch safety
+//! - `McpToolGuard`: Restricts MCP tool invocations
 //!
-//! Additionally, the IRM (Inline Reference Monitor) module provides runtime
-//! interception for filesystem, network, and execution operations.
+//! ## Quick Start
 //!
-//! Guards can be composed into rulesets and configured via YAML.
+//! ```rust
+//! use hushclaw::{ForbiddenPathGuard, SecretLeakGuard};
+//!
+//! // Check if a path is forbidden
+//! let guard = ForbiddenPathGuard::new();
+//! assert!(guard.is_forbidden("/home/user/.ssh/id_rsa"));
+//! assert!(!guard.is_forbidden("/app/src/main.rs"));
+//!
+//! // Scan content for secrets
+//! let secret_guard = SecretLeakGuard::new();
+//! let matches = secret_guard.scan(b"api_key = sk-1234567890abcdef");
+//! // Would detect potential API key
+//! ```
+//!
+//! ## Policy Configuration
+//!
+//! ```rust
+//! use hushclaw::Policy;
+//!
+//! let yaml = r#"
+//! version: "1.0.0"
+//! name: "example"
+//! settings:
+//!   fail_fast: true
+//! "#;
+//!
+//! let policy = Policy::from_yaml(yaml).unwrap();
+//! assert_eq!(policy.version, "1.0.0");
+//! ```
 
 pub mod engine;
 pub mod error;
