@@ -15,6 +15,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::auth::{require_auth, scope_layer, Scope};
+use crate::rate_limit::rate_limit_middleware;
 use crate::state::AppState;
 
 pub use audit::{AuditQuery, AuditResponse, AuditStatsResponse};
@@ -48,11 +49,17 @@ pub fn create_router(state: AppState) -> Router {
         .layer(middleware::from_fn(scope_layer(Scope::Admin)))
         .layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
+    // Apply rate limiting before other middleware
+    // Note: Rate limiting is applied to all routes except /health (handled in middleware)
     Router::new()
         .merge(public_routes)
         .merge(authenticated_routes)
         .merge(admin_routes)
         .layer(TraceLayer::new_for_http())
         .layer(cors)
+        .layer(middleware::from_fn_with_state(
+            state.rate_limit.clone(),
+            rate_limit_middleware,
+        ))
         .with_state(state)
 }
