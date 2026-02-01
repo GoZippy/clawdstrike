@@ -15,9 +15,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use hush_core::{Keypair, SignedReceipt};
 use hushclaw::{GuardContext, HushEngine, Policy, RuleSet};
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(name = "hush")]
-#[command(about = "Hushclaw security guard CLI", long_about = None)]
+#[command(version, about = "Hushclaw security guard CLI", long_about = None)]
 struct Cli {
     /// Verbosity level
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -27,7 +27,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// Check an action against policy
     Check {
@@ -80,7 +80,7 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum PolicyCommands {
     /// Show a ruleset's policy
     Show {
@@ -99,7 +99,7 @@ enum PolicyCommands {
     List,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum DaemonCommands {
     /// Start the daemon
     Start {

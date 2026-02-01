@@ -269,6 +269,70 @@ mod cli_parsing {
             _ => panic!("Expected Daemon command"),
         }
     }
+
+    #[test]
+    fn test_completions_bash() {
+        let cli = Cli::parse_from(["hush", "completions", "bash"]);
+
+        match cli.command {
+            Commands::Completions { shell } => {
+                assert_eq!(shell, clap_complete::Shell::Bash);
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn test_completions_zsh() {
+        let cli = Cli::parse_from(["hush", "completions", "zsh"]);
+
+        match cli.command {
+            Commands::Completions { shell } => {
+                assert_eq!(shell, clap_complete::Shell::Zsh);
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn test_completions_fish() {
+        let cli = Cli::parse_from(["hush", "completions", "fish"]);
+
+        match cli.command {
+            Commands::Completions { shell } => {
+                assert_eq!(shell, clap_complete::Shell::Fish);
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn test_version_flag() {
+        let result = Cli::try_parse_from(["hush", "--version"]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayVersion);
+    }
+
+    #[test]
+    fn test_help_flag() {
+        let result = Cli::try_parse_from(["hush", "--help"]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
+    }
+
+    #[test]
+    fn test_invalid_command_fails() {
+        let result = Cli::try_parse_from(["hush", "nonexistent-command"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verbose_flag_counts() {
+        let cli = Cli::parse_from(["hush", "-vvv", "policy", "list"]);
+        assert_eq!(cli.verbose, 3);
+    }
 }
 
 #[cfg(test)]
