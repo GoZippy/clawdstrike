@@ -12,9 +12,11 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::generate;
 use rand::Rng;
 use sha2::{Digest, Sha256};
+use std::io::{self, Read};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use hush_core::{Keypair, SignedReceipt};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use hush_core::{keccak256, sha256, Keypair, SignedReceipt};
 use hushclaw::{GuardContext, HushEngine, Policy, RuleSet};
 
 #[derive(Parser, Debug)]
@@ -79,6 +81,20 @@ enum Commands {
         /// Shell to generate completions for (bash, zsh, fish, powershell, elvish)
         #[arg(value_enum)]
         shell: clap_complete::Shell,
+    },
+
+    /// Compute hash of a file or stdin
+    Hash {
+        /// File to hash (use - for stdin)
+        file: String,
+
+        /// Hash algorithm (sha256 or keccak256)
+        #[arg(short, long, default_value = "sha256")]
+        algorithm: String,
+
+        /// Output format (hex or base64)
+        #[arg(short, long, default_value = "hex")]
+        format: String,
     },
 }
 
@@ -427,6 +443,37 @@ async fn main() -> anyhow::Result<()> {
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             generate(shell, &mut cmd, "hush", &mut std::io::stdout());
+        }
+
+        Commands::Hash {
+            file,
+            algorithm,
+            format,
+        } => {
+            // Read input
+            let data = if file == "-" {
+                let mut buf = Vec::new();
+                io::stdin().read_to_end(&mut buf)?;
+                buf
+            } else {
+                std::fs::read(&file)?
+            };
+
+            // Compute hash
+            let hash = match algorithm.as_str() {
+                "sha256" => sha256(&data),
+                "keccak256" => keccak256(&data),
+                _ => anyhow::bail!("Unknown algorithm: {}. Use sha256 or keccak256", algorithm),
+            };
+
+            // Format output
+            let output = match format.as_str() {
+                "hex" => hash.to_hex(),
+                "base64" => BASE64.encode(hash.as_bytes()),
+                _ => anyhow::bail!("Unknown format: {}. Use hex or base64", format),
+            };
+
+            println!("{}", output);
         }
     }
 

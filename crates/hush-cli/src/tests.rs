@@ -333,6 +333,63 @@ mod cli_parsing {
         let cli = Cli::parse_from(["hush", "-vvv", "policy", "list"]);
         assert_eq!(cli.verbose, 3);
     }
+
+    #[test]
+    fn test_hash_command_default_algorithm() {
+        let cli = Cli::parse_from(["hush", "hash", "file.txt"]);
+
+        match cli.command {
+            Commands::Hash {
+                file,
+                algorithm,
+                format,
+            } => {
+                assert_eq!(file, "file.txt");
+                assert_eq!(algorithm, "sha256");
+                assert_eq!(format, "hex");
+            }
+            _ => panic!("Expected Hash command"),
+        }
+    }
+
+    #[test]
+    fn test_hash_command_keccak256() {
+        let cli = Cli::parse_from(["hush", "hash", "--algorithm", "keccak256", "data.bin"]);
+
+        match cli.command {
+            Commands::Hash {
+                algorithm, file, ..
+            } => {
+                assert_eq!(algorithm, "keccak256");
+                assert_eq!(file, "data.bin");
+            }
+            _ => panic!("Expected Hash command"),
+        }
+    }
+
+    #[test]
+    fn test_hash_command_base64_format() {
+        let cli = Cli::parse_from(["hush", "hash", "--format", "base64", "file.txt"]);
+
+        match cli.command {
+            Commands::Hash { format, .. } => {
+                assert_eq!(format, "base64");
+            }
+            _ => panic!("Expected Hash command"),
+        }
+    }
+
+    #[test]
+    fn test_hash_command_stdin() {
+        let cli = Cli::parse_from(["hush", "hash", "-"]);
+
+        match cli.command {
+            Commands::Hash { file, .. } => {
+                assert_eq!(file, "-");
+            }
+            _ => panic!("Expected Hash command"),
+        }
+    }
 }
 
 #[cfg(test)]
