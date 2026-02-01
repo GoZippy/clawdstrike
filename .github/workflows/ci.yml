@@ -183,6 +183,64 @@ jobs:
         env:
           PROPTEST_CASES: 500
 
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-integration-
+            ${{ runner.os }}-cargo-
+
+      - name: Build daemon
+        run: cargo build -p hushd
+
+      - name: Start daemon in background
+        run: |
+          ./target/debug/hushd start &
+          echo $! > /tmp/hushd.pid
+        env:
+          RUST_LOG: info
+
+      - name: Wait for daemon health
+        run: |
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:9876/health | grep -q '"status":"healthy"'; then
+              echo "Daemon is healthy"
+              exit 0
+            fi
+            echo "Waiting for daemon... (attempt $i/30)"
+            sleep 1
+          done
+          echo "Daemon failed to start"
+          exit 1
+
+      - name: Run integration tests
+        run: cargo test -p hushd --test integration
+        env:
+          HUSHD_TEST_URL: http://127.0.0.1:9876
+
+      - name: Stop daemon
+        if: always()
+        run: |
+          if [ -f /tmp/hushd.pid ]; then
+            kill $(cat /tmp/hushd.pid) 2>/dev/null || true
+            rm /tmp/hushd.pid
+          fi
+
   fuzz-check:
     name: Fuzz Check
     runs-on: ubuntu-latest
