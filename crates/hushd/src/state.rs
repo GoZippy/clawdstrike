@@ -9,6 +9,7 @@ use hushclaw::{HushEngine, Policy, RuleSet};
 use crate::audit::{AuditEvent, AuditLedger};
 use crate::auth::AuthStore;
 use crate::config::Config;
+use crate::rate_limit::RateLimitState;
 
 /// Event broadcast for SSE streaming
 #[derive(Clone, Debug)]
@@ -34,6 +35,8 @@ pub struct AppState {
     pub session_id: String,
     /// Start time
     pub started_at: chrono::DateTime<chrono::Utc>,
+    /// Rate limiter state
+    pub rate_limit: RateLimitState,
 }
 
 impl AppState {
@@ -82,6 +85,16 @@ impl AppState {
             );
         }
 
+        // Create rate limiter state
+        let rate_limit = RateLimitState::new(&config.rate_limit);
+        if config.rate_limit.enabled {
+            tracing::info!(
+                requests_per_second = config.rate_limit.requests_per_second,
+                burst_size = config.rate_limit.burst_size,
+                "Rate limiting enabled"
+            );
+        }
+
         // Generate session ID
         let session_id = uuid::Uuid::new_v4().to_string();
 
@@ -97,6 +110,7 @@ impl AppState {
             auth_store,
             session_id,
             started_at: chrono::Utc::now(),
+            rate_limit,
         })
     }
 
