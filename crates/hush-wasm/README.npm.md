@@ -68,6 +68,26 @@ const hash = hash_sha256(Buffer.from('hello'));
 - `compute_merkle_root(leaf_hashes_json: string): string`
 - `generate_merkle_proof(leaf_hashes_json: string, leaf_index: number): string`
 
+## Bundle Size
+
+- Uncompressed: ~268KB
+- Gzipped: ~90KB
+
+The WASM binary is automatically loaded when you call `init()`.
+
+## TypeScript
+
+Full TypeScript definitions are included. The `VerificationResult` type:
+
+```typescript
+interface VerificationResult {
+  valid: boolean;
+  signer_valid: boolean;
+  cosigner_valid: boolean | null;
+  errors: string[];
+}
+```
+
 ## License
 
 MIT
