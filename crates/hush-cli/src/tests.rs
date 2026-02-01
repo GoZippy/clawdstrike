@@ -85,6 +85,54 @@ mod cli_parsing {
             _ => panic!("Expected Check command"),
         }
     }
+
+    #[test]
+    fn test_verify_command_parses() {
+        let cli = Cli::parse_from([
+            "hush",
+            "verify",
+            "receipt.json",
+            "--pubkey",
+            "key.pub",
+        ]);
+
+        match cli.command {
+            Commands::Verify { receipt, pubkey } => {
+                assert_eq!(receipt, "receipt.json");
+                assert_eq!(pubkey, "key.pub");
+            }
+            _ => panic!("Expected Verify command"),
+        }
+    }
+
+    #[test]
+    fn test_keygen_command_default_output() {
+        let cli = Cli::parse_from(["hush", "keygen"]);
+
+        match cli.command {
+            Commands::Keygen { output } => {
+                assert_eq!(output, "hush.key"); // default
+            }
+            _ => panic!("Expected Keygen command"),
+        }
+    }
+
+    #[test]
+    fn test_keygen_command_custom_output() {
+        let cli = Cli::parse_from([
+            "hush",
+            "keygen",
+            "--output",
+            "/custom/path/my.key",
+        ]);
+
+        match cli.command {
+            Commands::Keygen { output } => {
+                assert_eq!(output, "/custom/path/my.key");
+            }
+            _ => panic!("Expected Keygen command"),
+        }
+    }
 }
 
 #[cfg(test)]
