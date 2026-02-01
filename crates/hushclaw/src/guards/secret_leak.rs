@@ -1,190 +1,215 @@
-//! Secret leak guard - detects potential secret exposure
+//! Secret Leak Guard
+//!
+//! Detects potential secrets (API keys, tokens, passwords) in outputs and patches.
 
 use async_trait::async_trait;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
+use tracing::debug;
 
-use super::{Guard, GuardAction, GuardContext, GuardResult, Severity};
+use super::{Guard, GuardResult};
+use crate::error::Severity;
+use crate::event::{Event, EventData, EventType};
+use crate::policy::Policy;
 
-/// Pattern definition for secret detection
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SecretPattern {
-    /// Pattern name
-    pub name: String,
-    /// Regex pattern
-    pub pattern: String,
-    /// Severity level
-    #[serde(default = "default_severity")]
-    pub severity: Severity,
+/// Guard that detects secrets in outputs
+pub struct SecretLeakGuard {
+    patterns: Vec<SecretPattern>,
 }
 
-fn default_severity() -> Severity {
-    Severity::Critical
-}
-
-/// Configuration for SecretLeakGuard
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SecretLeakConfig {
-    /// Secret patterns to detect
-    #[serde(default = "default_patterns")]
-    pub patterns: Vec<SecretPattern>,
-    /// File patterns to skip (e.g., test fixtures)
-    #[serde(default)]
-    pub skip_paths: Vec<String>,
-}
-
-fn default_patterns() -> Vec<SecretPattern> {
-    vec![
-        SecretPattern {
-            name: "aws_access_key".to_string(),
-            pattern: r"AKIA[0-9A-Z]{16}".to_string(),
-            severity: Severity::Critical,
-        },
-        SecretPattern {
-            name: "aws_secret_key".to_string(),
-            pattern: r#"(?i)aws[_\-]?secret[_\-]?access[_\-]?key['"]?\s*[:=]\s*['"]?[A-Za-z0-9/+=]{40}"#.to_string(),
-            severity: Severity::Critical,
-        },
-        SecretPattern {
-            name: "github_token".to_string(),
-            pattern: r"gh[ps]_[A-Za-z0-9]{36}".to_string(),
-            severity: Severity::Critical,
-        },
-        SecretPattern {
-            name: "github_pat".to_string(),
-            pattern: r"github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59}".to_string(),
-            severity: Severity::Critical,
-        },
-        SecretPattern {
-            name: "openai_key".to_string(),
-            pattern: r"sk-[A-Za-z0-9]{48}".to_string(),
-            severity: Severity::Critical,
-        },
-        SecretPattern {
-            name: "anthropic_key".to_string(),
-            pattern: r"sk-ant-[A-Za-z0-9\-]{95}".to_string(),
-            severity: Severity::Critical,
-        },
-        SecretPattern {
-            name: "private_key".to_string(),
-            pattern: r"-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----".to_string(),
-            severity: Severity::Critical,
-        },
-        SecretPattern {
-            name: "npm_token".to_string(),
-            pattern: r"npm_[A-Za-z0-9]{36}".to_string(),
-            severity: Severity::Critical,
-        },
-        SecretPattern {
-            name: "slack_token".to_string(),
-            pattern: r"xox[baprs]-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*".to_string(),
-            severity: Severity::Critical,
-        },
-        SecretPattern {
-            name: "generic_api_key".to_string(),
-            pattern: r#"(?i)(api[_\-]?key|apikey)['"]?\s*[:=]\s*['"]?[A-Za-z0-9]{32,}"#.to_string(),
-            severity: Severity::Warning,
-        },
-        SecretPattern {
-            name: "generic_secret".to_string(),
-            pattern: r#"(?i)(secret|password|passwd|pwd)['"]?\s*[:=]\s*['"]?[A-Za-z0-9!@#$%^&*]{8,}"#.to_string(),
-            severity: Severity::Warning,
-        },
-    ]
-}
-
-impl Default for SecretLeakConfig {
-    fn default() -> Self {
-        Self {
-            patterns: default_patterns(),
-            skip_paths: vec![
-                "**/test/**".to_string(),
-                "**/tests/**".to_string(),
-                "**/*_test.*".to_string(),
-                "**/*.test.*".to_string(),
-            ],
-        }
-    }
-}
-
-/// Compiled pattern for matching
-struct CompiledPattern {
-    name: String,
+struct SecretPattern {
+    name: &'static str,
     regex: Regex,
     severity: Severity,
 }
 
-/// Guard that detects potential secret exposure in content
-pub struct SecretLeakGuard {
-    name: String,
-    patterns: Vec<CompiledPattern>,
-    skip_paths: Vec<glob::Pattern>,
-}
-
 impl SecretLeakGuard {
-    /// Create with default configuration
     pub fn new() -> Self {
-        Self::with_config(SecretLeakConfig::default())
+        let patterns = vec![
+            // AWS
+            SecretPattern {
+                name: "AWS Access Key ID",
+                regex: Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "AWS Secret Access Key",
+                regex: Regex::new(r#"(?i)aws.{0,20}secret.{0,20}['"][0-9a-zA-Z/+]{40}['"]"#)
+                    .unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "AWS Session Token",
+                regex: Regex::new(r"(?i)aws.{0,20}session.{0,20}token").unwrap(),
+                severity: Severity::High,
+            },
+            // GitHub
+            SecretPattern {
+                name: "GitHub Personal Access Token (Classic)",
+                regex: Regex::new(r"ghp_[a-zA-Z0-9]{36}").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "GitHub OAuth Access Token",
+                regex: Regex::new(r"gho_[a-zA-Z0-9]{36}").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "GitHub App Token",
+                regex: Regex::new(r"ghu_[a-zA-Z0-9]{36}").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "GitHub Server Token",
+                regex: Regex::new(r"ghs_[a-zA-Z0-9]{36}").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "GitHub Fine-Grained PAT",
+                regex: Regex::new(r"github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}").unwrap(),
+                severity: Severity::Critical,
+            },
+            // AI Provider Keys
+            SecretPattern {
+                name: "OpenAI API Key",
+                regex: Regex::new(r"sk-[a-zA-Z0-9]{48}").unwrap(),
+                severity: Severity::High,
+            },
+            SecretPattern {
+                name: "OpenAI Project Key",
+                regex: Regex::new(r"sk-proj-[a-zA-Z0-9]{48}").unwrap(),
+                severity: Severity::High,
+            },
+            SecretPattern {
+                name: "Anthropic API Key",
+                regex: Regex::new(r"sk-ant-[a-zA-Z0-9-]{93}").unwrap(),
+                severity: Severity::High,
+            },
+            // Slack
+            SecretPattern {
+                name: "Slack Bot Token",
+                regex: Regex::new(r"xoxb-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*").unwrap(),
+                severity: Severity::High,
+            },
+            SecretPattern {
+                name: "Slack User Token",
+                regex: Regex::new(r"xoxp-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*").unwrap(),
+                severity: Severity::High,
+            },
+            SecretPattern {
+                name: "Slack Webhook URL",
+                regex: Regex::new(
+                    r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+",
+                )
+                .unwrap(),
+                severity: Severity::High,
+            },
+            // Stripe
+            SecretPattern {
+                name: "Stripe Secret Key",
+                regex: Regex::new(r"sk_live_[a-zA-Z0-9]{24,}").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "Stripe Restricted Key",
+                regex: Regex::new(r"rk_live_[a-zA-Z0-9]{24,}").unwrap(),
+                severity: Severity::Critical,
+            },
+            // Private Keys
+            SecretPattern {
+                name: "RSA Private Key",
+                regex: Regex::new(r"-----BEGIN RSA PRIVATE KEY-----").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "EC Private Key",
+                regex: Regex::new(r"-----BEGIN EC PRIVATE KEY-----").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "OpenSSH Private Key",
+                regex: Regex::new(r"-----BEGIN OPENSSH PRIVATE KEY-----").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "PGP Private Key",
+                regex: Regex::new(r"-----BEGIN PGP PRIVATE KEY BLOCK-----").unwrap(),
+                severity: Severity::Critical,
+            },
+            // JWT
+            SecretPattern {
+                name: "JSON Web Token",
+                regex: Regex::new(r"eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*").unwrap(),
+                severity: Severity::High,
+            },
+            // Database URLs
+            SecretPattern {
+                name: "PostgreSQL Connection String",
+                regex: Regex::new(r"postgres://[^:]+:[^@]+@[^/]+").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "MySQL Connection String",
+                regex: Regex::new(r"mysql://[^:]+:[^@]+@[^/]+").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "MongoDB Connection String",
+                regex: Regex::new(r"mongodb(\+srv)?://[^:]+:[^@]+@").unwrap(),
+                severity: Severity::Critical,
+            },
+            SecretPattern {
+                name: "Redis Connection String",
+                regex: Regex::new(r"redis://[^:]*:[^@]+@").unwrap(),
+                severity: Severity::Critical,
+            },
+            // Generic patterns
+            SecretPattern {
+                name: "Generic API Key Assignment",
+                regex: Regex::new(r#"(?i)(?:api[_-]?key|apikey)\s*[:=]\s*['"][a-zA-Z0-9]{20,}['"]"#)
+                    .unwrap(),
+                severity: Severity::Medium,
+            },
+            SecretPattern {
+                name: "Generic Secret Assignment",
+                regex: Regex::new(r#"(?i)(?:secret|password|passwd|pwd)\s*[:=]\s*['"][^'"]{8,}['"]"#)
+                    .unwrap(),
+                severity: Severity::Medium,
+            },
+            SecretPattern {
+                name: "Bearer Token",
+                regex: Regex::new(r"(?i)bearer\s+[a-zA-Z0-9_.~+/=-]{20,}").unwrap(),
+                severity: Severity::High,
+            },
+            SecretPattern {
+                name: "Basic Auth Header",
+                regex: Regex::new(r"(?i)basic\s+[a-zA-Z0-9+/=]{20,}").unwrap(),
+                severity: Severity::High,
+            },
+            // Crypto
+            SecretPattern {
+                name: "Solana Private Key (byte array)",
+                regex: Regex::new(r"\[(?:\s*\d{1,3}\s*,){63}\s*\d{1,3}\s*\]").unwrap(),
+                severity: Severity::Critical,
+            },
+        ];
+
+        Self { patterns }
     }
 
-    /// Create with custom configuration
-    pub fn with_config(config: SecretLeakConfig) -> Self {
-        let patterns = config
-            .patterns
-            .into_iter()
-            .filter_map(|p| {
-                Regex::new(&p.pattern).ok().map(|regex| CompiledPattern {
-                    name: p.name,
-                    regex,
-                    severity: p.severity,
-                })
-            })
-            .collect();
-
-        let skip_paths = config
-            .skip_paths
-            .iter()
-            .filter_map(|p| glob::Pattern::new(p).ok())
-            .collect();
-
-        Self {
-            name: "secret_leak".to_string(),
-            patterns,
-            skip_paths,
-        }
-    }
-
-    /// Check content for secrets
-    pub fn scan(&self, content: &[u8]) -> Vec<SecretMatch> {
-        let content = match std::str::from_utf8(content) {
-            Ok(s) => s,
-            Err(_) => return vec![], // Skip binary content
-        };
-
-        let mut matches = Vec::new();
+    /// Scan content for secrets
+    fn scan_content(&self, content: &str) -> Option<(String, Severity)> {
         for pattern in &self.patterns {
-            for m in pattern.regex.find_iter(content) {
-                matches.push(SecretMatch {
-                    pattern_name: pattern.name.clone(),
-                    severity: pattern.severity.clone(),
-                    offset: m.start(),
-                    length: m.len(),
-                    // Don't include the actual secret in the match!
-                    redacted: redact_secret(m.as_str()),
-                });
+            if pattern.regex.is_match(content) {
+                debug!("Detected potential secret: {}", pattern.name);
+                return Some((pattern.name.to_string(), pattern.severity));
             }
         }
-        matches
+        None
     }
 
-    /// Check if a path should be skipped
-    pub fn should_skip_path(&self, path: &str) -> bool {
-        for pattern in &self.skip_paths {
-            if pattern.matches(path) {
-                return true;
-            }
-        }
-        false
+    /// Get number of patterns
+    pub fn pattern_count(&self) -> usize {
+        self.patterns.len()
     }
 }
 
@@ -194,110 +219,28 @@ impl Default for SecretLeakGuard {
     }
 }
 
-/// A secret match (with redacted content)
-#[derive(Clone, Debug)]
-pub struct SecretMatch {
-    pub pattern_name: String,
-    pub severity: Severity,
-    pub offset: usize,
-    pub length: usize,
-    pub redacted: String,
-}
-
-/// Redact a secret, keeping only first/last chars
-fn redact_secret(s: &str) -> String {
-    if s.len() <= 8 {
-        "*".repeat(s.len())
-    } else {
-        format!(
-            "{}{}{}",
-            &s[..4],
-            "*".repeat(s.len() - 8),
-            &s[s.len() - 4..]
-        )
-    }
-}
-
 #[async_trait]
 impl Guard for SecretLeakGuard {
     fn name(&self) -> &str {
-        &self.name
+        "secret_leak"
     }
 
-    fn handles(&self, action: &GuardAction<'_>) -> bool {
-        matches!(
-            action,
-            GuardAction::FileWrite(_, _) | GuardAction::Patch(_, _)
-        )
-    }
-
-    async fn check(&self, action: &GuardAction<'_>, _context: &GuardContext) -> GuardResult {
-        let (path, content) = match action {
-            GuardAction::FileWrite(p, c) => (*p, *c),
-            GuardAction::Patch(p, diff) => (*p, diff.as_bytes()),
-            _ => return GuardResult::allow(&self.name),
+    async fn check(&self, event: &Event, _policy: &Policy) -> GuardResult {
+        let content_to_scan = match (&event.event_type, &event.data) {
+            (EventType::PatchApply, EventData::Patch(data)) => Some(&data.patch_content),
+            _ => None,
         };
 
-        // Skip certain paths
-        if self.should_skip_path(path) {
-            return GuardResult::allow(&self.name);
+        if let Some(content) = content_to_scan {
+            if let Some((secret_type, severity)) = self.scan_content(content) {
+                return GuardResult::Deny {
+                    reason: format!("Potential {} detected in content", secret_type),
+                    severity,
+                };
+            }
         }
 
-        let matches = self.scan(content);
-
-        if matches.is_empty() {
-            return GuardResult::allow(&self.name);
-        }
-
-        // Find the most severe match
-        let max_severity = matches
-            .iter()
-            .map(|m| &m.severity)
-            .max_by(|a, b| {
-                use Severity::*;
-                match (a, b) {
-                    (Critical, _) => std::cmp::Ordering::Greater,
-                    (_, Critical) => std::cmp::Ordering::Less,
-                    (Error, _) => std::cmp::Ordering::Greater,
-                    (_, Error) => std::cmp::Ordering::Less,
-                    (Warning, _) => std::cmp::Ordering::Greater,
-                    (_, Warning) => std::cmp::Ordering::Less,
-                    _ => std::cmp::Ordering::Equal,
-                }
-            })
-            .cloned()
-            .unwrap_or(Severity::Warning);
-
-        let pattern_names: Vec<_> = matches.iter().map(|m| m.pattern_name.clone()).collect();
-
-        if matches!(max_severity, Severity::Critical | Severity::Error) {
-            GuardResult::block(
-                &self.name,
-                max_severity,
-                format!(
-                    "Potential secrets detected: {}",
-                    pattern_names.join(", ")
-                ),
-            )
-            .with_details(serde_json::json!({
-                "path": path,
-                "matches": matches.iter().map(|m| {
-                    serde_json::json!({
-                        "pattern": m.pattern_name,
-                        "severity": m.severity,
-                        "redacted": m.redacted,
-                    })
-                }).collect::<Vec<_>>(),
-            }))
-        } else {
-            GuardResult::warn(
-                &self.name,
-                format!(
-                    "Potential secrets detected (warning): {}",
-                    pattern_names.join(", ")
-                ),
-            )
-        }
+        GuardResult::Allow
     }
 }
 
@@ -305,70 +248,207 @@ impl Guard for SecretLeakGuard {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_aws_access_key() {
-        let guard = SecretLeakGuard::new();
-        let content = b"aws_key = AKIAIOSFODNN7EXAMPLE";
-        let matches = guard.scan(content);
-        assert!(!matches.is_empty());
-        assert_eq!(matches[0].pattern_name, "aws_access_key");
+    fn make_patch_event(content: &str) -> Event {
+        Event::patch_apply("/tmp/file.py", content)
     }
 
     #[test]
-    fn test_github_token() {
+    fn test_has_sufficient_patterns() {
         let guard = SecretLeakGuard::new();
-        let content = b"token: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-        let matches = guard.scan(content);
-        assert!(!matches.is_empty());
-        assert_eq!(matches[0].pattern_name, "github_token");
-    }
-
-    #[test]
-    fn test_private_key() {
-        let guard = SecretLeakGuard::new();
-        let content = b"-----BEGIN RSA PRIVATE KEY-----\nMIIE...";
-        let matches = guard.scan(content);
-        assert!(!matches.is_empty());
-        assert_eq!(matches[0].pattern_name, "private_key");
-    }
-
-    #[test]
-    fn test_no_secrets() {
-        let guard = SecretLeakGuard::new();
-        let content = b"This is just normal code\nfn main() { }";
-        let matches = guard.scan(content);
-        assert!(matches.is_empty());
-    }
-
-    #[test]
-    fn test_redaction() {
-        assert_eq!(redact_secret("short"), "*****");
-        assert_eq!(redact_secret("AKIAIOSFODNN7EXAMPLE"), "AKIA************MPLE");
-    }
-
-    #[test]
-    fn test_skip_paths() {
-        let guard = SecretLeakGuard::new();
-        assert!(guard.should_skip_path("/app/tests/fixtures/sample.json"));
-        assert!(guard.should_skip_path("/app/src/main_test.rs"));
-        assert!(!guard.should_skip_path("/app/src/main.rs"));
+        assert!(
+            guard.pattern_count() >= 15,
+            "Should have at least 15 patterns"
+        );
     }
 
     #[tokio::test]
-    async fn test_guard_check() {
+    async fn test_allows_clean_content() {
         let guard = SecretLeakGuard::new();
-        let context = GuardContext::new();
+        let policy = Policy::default();
 
-        let content = b"api_key = sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-        let result = guard
-            .check(&GuardAction::FileWrite("/app/config.py", content), &context)
-            .await;
-        assert!(!result.allowed);
+        let event = make_patch_event("def hello():\n    print('Hello, world!')");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_allowed());
+    }
 
-        let content = b"fn main() { println!(\"Hello\"); }";
-        let result = guard
-            .check(&GuardAction::FileWrite("/app/main.rs", content), &context)
-            .await;
-        assert!(result.allowed);
+    #[tokio::test]
+    async fn test_allows_normal_code() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event(
+            r#"
+            import os
+
+            def main():
+                config = load_config()
+                return config.get('setting')
+        "#,
+        );
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_allowed());
+    }
+
+    #[tokio::test]
+    async fn test_detects_aws_access_key() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event("AWS_ACCESS_KEY_ID = 'AKIAIOSFODNN7EXAMPLE'");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_github_token_ghp() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event("token = 'ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_github_token_gho() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event("GITHUB_TOKEN=gho_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_openai_key() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event(
+            "OPENAI_API_KEY = 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'",
+        );
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_anthropic_key() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        // 93 character key after sk-ant-
+        let key = "sk-ant-".to_string() + &"x".repeat(93);
+        let event = make_patch_event(&format!("ANTHROPIC_API_KEY = '{}'", key));
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_rsa_private_key() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event(
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----",
+        );
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_openssh_private_key() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event(
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXkt...\n-----END OPENSSH PRIVATE KEY-----",
+        );
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_postgres_url() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event =
+            make_patch_event("DATABASE_URL = 'postgres://user:password123@localhost:5432/mydb'");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_mongodb_url() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event =
+            make_patch_event("MONGO_URI = 'mongodb+srv://user:pass@cluster.mongodb.net/db'");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_slack_bot_token() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event(
+            "SLACK_TOKEN = 'xoxb-1234567890123-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx'",
+        );
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_stripe_live_key() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event("STRIPE_KEY = 'sk_live_xxxxxxxxxxxxxxxxxxxxxxxx'");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_jwt() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event("token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_detects_bearer_token() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = make_patch_event("Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_ignores_file_read_events() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        // File read events don't have content to scan
+        let event = Event::file_read("/path/to/secrets.json");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_allowed());
+    }
+
+    #[tokio::test]
+    async fn test_ignores_network_events() {
+        let guard = SecretLeakGuard::new();
+        let policy = Policy::default();
+
+        let event = Event::network_egress("api.github.com", 443);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_allowed());
     }
 }

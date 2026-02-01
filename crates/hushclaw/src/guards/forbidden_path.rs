@@ -1,120 +1,146 @@
-//! Forbidden path guard - blocks access to sensitive paths
+//! Forbidden Path Guard
+//!
+//! Blocks access to sensitive filesystem paths like /etc/shadow, ~/.ssh, etc.
 
 use async_trait::async_trait;
-use glob::Pattern;
-use serde::{Deserialize, Serialize};
+use globset::{Glob, GlobSet, GlobSetBuilder};
+use tracing::debug;
 
-use super::{Guard, GuardAction, GuardContext, GuardResult, Severity};
+use super::{Guard, GuardResult};
+use crate::error::Severity;
+use crate::event::{Event, EventData, EventType};
+use crate::policy::Policy;
 
-/// Configuration for ForbiddenPathGuard
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ForbiddenPathConfig {
-    /// Glob patterns for forbidden paths
-    #[serde(default = "default_forbidden_patterns")]
-    pub patterns: Vec<String>,
-    /// Additional allowed paths (exceptions)
-    #[serde(default)]
-    pub exceptions: Vec<String>,
-}
-
-fn default_forbidden_patterns() -> Vec<String> {
-    vec![
-        // SSH keys
-        "**/.ssh/**".to_string(),
-        "**/id_rsa*".to_string(),
-        "**/id_ed25519*".to_string(),
-        "**/id_ecdsa*".to_string(),
-        // AWS credentials
-        "**/.aws/**".to_string(),
-        // Environment files
-        "**/.env".to_string(),
-        "**/.env.*".to_string(),
-        // Git credentials
-        "**/.git-credentials".to_string(),
-        "**/.gitconfig".to_string(),
-        // GPG keys
-        "**/.gnupg/**".to_string(),
-        // Kubernetes
-        "**/.kube/**".to_string(),
-        // Docker
-        "**/.docker/**".to_string(),
-        // NPM tokens
-        "**/.npmrc".to_string(),
-        // Password stores
-        "**/.password-store/**".to_string(),
-        "**/pass/**".to_string(),
-        // 1Password
-        "**/.1password/**".to_string(),
-        // System paths
-        "/etc/shadow".to_string(),
-        "/etc/passwd".to_string(),
-        "/etc/sudoers".to_string(),
-    ]
-}
-
-impl Default for ForbiddenPathConfig {
-    fn default() -> Self {
-        Self {
-            patterns: default_forbidden_patterns(),
-            exceptions: vec![],
-        }
-    }
-}
-
-/// Guard that blocks access to sensitive paths
+/// Guard that blocks access to forbidden filesystem paths
 pub struct ForbiddenPathGuard {
-    name: String,
-    patterns: Vec<Pattern>,
-    exceptions: Vec<Pattern>,
+    /// Precompiled glob patterns for common sensitive paths
+    sensitive_globs: GlobSet,
 }
 
 impl ForbiddenPathGuard {
-    /// Create with default configuration
     pub fn new() -> Self {
-        Self::with_config(ForbiddenPathConfig::default())
-    }
+        let mut builder = GlobSetBuilder::new();
 
-    /// Create with custom configuration
-    pub fn with_config(config: ForbiddenPathConfig) -> Self {
-        let patterns = config
-            .patterns
-            .iter()
-            .filter_map(|p| Pattern::new(p).ok())
-            .collect();
+        // Add common sensitive path patterns
+        let patterns = [
+            // System security files
+            "**/etc/shadow",
+            "**/etc/passwd",
+            "**/etc/sudoers",
+            "**/etc/sudoers.d/**",
+            // SSH keys
+            "**/.ssh/**",
+            "**/id_rsa",
+            "**/id_rsa.pub",
+            "**/id_ed25519",
+            "**/id_ed25519.pub",
+            "**/id_ecdsa",
+            "**/authorized_keys",
+            "**/known_hosts",
+            // GPG keys
+            "**/.gnupg/**",
+            // Cloud credentials
+            "**/.aws/credentials",
+            "**/.aws/config",
+            "**/.azure/**",
+            "**/.kube/config",
+            "**/.config/gcloud/**",
+            "**/.docker/config.json",
+            // Environment files
+            "**/.env",
+            "**/.env.*",
+            "**/env.local",
+            // Private keys
+            "**/*.pem",
+            "**/*.key",
+            "**/private/**",
+            // Sensitive config
+            "**/secrets.yaml",
+            "**/secrets.json",
+            "**/credentials.json",
+        ];
 
-        let exceptions = config
-            .exceptions
-            .iter()
-            .filter_map(|p| Pattern::new(p).ok())
-            .collect();
+        for pattern in patterns {
+            if let Ok(glob) = Glob::new(pattern) {
+                builder.add(glob);
+            }
+        }
 
         Self {
-            name: "forbidden_path".to_string(),
-            patterns,
-            exceptions,
+            sensitive_globs: builder.build().unwrap_or_else(|_| GlobSet::empty()),
         }
     }
 
-    /// Check if a path is forbidden
-    pub fn is_forbidden(&self, path: &str) -> bool {
-        // Normalize path
-        let path = path.replace('\\', "/");
+    /// Expand home directory in path
+    fn expand_home(&self, path: &str) -> String {
+        if path.starts_with("~/") {
+            if let Ok(home) = std::env::var("HOME") {
+                return path.replacen("~", &home, 1);
+            }
+        }
+        path.to_string()
+    }
 
-        // Check exceptions first
-        for exception in &self.exceptions {
-            if exception.matches(&path) {
-                return false;
+    /// Check if a path matches forbidden patterns
+    fn check_path_string(&self, path: &str, policy: &Policy) -> GuardResult {
+        let expanded = self.expand_home(path);
+
+        // Check against policy forbidden paths
+        for forbidden in &policy.filesystem.forbidden_paths {
+            let forbidden_expanded = self.expand_home(forbidden);
+
+            // Direct match or prefix match
+            if expanded == forbidden_expanded
+                || expanded.starts_with(&format!("{}/", forbidden_expanded))
+                || expanded.contains(&forbidden_expanded)
+            {
+                debug!("Path {} matches forbidden pattern {}", path, forbidden);
+                return GuardResult::Deny {
+                    reason: format!("Path '{}' is forbidden by policy", path),
+                    severity: Severity::Critical,
+                };
             }
         }
 
-        // Check forbidden patterns
-        for pattern in &self.patterns {
-            if pattern.matches(&path) {
-                return true;
+        // Check against built-in sensitive globs
+        if self.sensitive_globs.is_match(&expanded) {
+            return GuardResult::Deny {
+                reason: format!("Path '{}' matches sensitive file pattern", path),
+                severity: Severity::Critical,
+            };
+        }
+
+        GuardResult::Allow
+    }
+
+    /// Check path with symlink resolution
+    async fn check_path(&self, path: &str, policy: &Policy) -> GuardResult {
+        // Always check the original path string first
+        let direct = self.check_path_string(path, policy);
+        if direct.is_denied() {
+            return direct;
+        }
+
+        // Best-effort symlink/path traversal defense: canonicalize and re-check
+        // If the path doesn't exist, fall back to string checks only
+        let expanded = self.expand_home(path);
+        match tokio::fs::canonicalize(&expanded).await {
+            Ok(real) => {
+                let real = real.to_string_lossy().to_string();
+                let resolved = self.check_path_string(&real, policy);
+                if resolved.is_denied() {
+                    return GuardResult::Deny {
+                        reason: format!("Path '{}' resolves to forbidden target '{}'", path, real),
+                        severity: Severity::Critical,
+                    };
+                }
+            }
+            Err(_) => {
+                // Path doesn't exist or can't be resolved - that's fine
             }
         }
 
-        false
+        GuardResult::Allow
     }
 }
 
@@ -127,36 +153,18 @@ impl Default for ForbiddenPathGuard {
 #[async_trait]
 impl Guard for ForbiddenPathGuard {
     fn name(&self) -> &str {
-        &self.name
+        "forbidden_path"
     }
 
-    fn handles(&self, action: &GuardAction<'_>) -> bool {
-        matches!(
-            action,
-            GuardAction::FileAccess(_) | GuardAction::FileWrite(_, _) | GuardAction::Patch(_, _)
-        )
-    }
-
-    async fn check(&self, action: &GuardAction<'_>, _context: &GuardContext) -> GuardResult {
-        let path = match action {
-            GuardAction::FileAccess(p) => *p,
-            GuardAction::FileWrite(p, _) => *p,
-            GuardAction::Patch(p, _) => *p,
-            _ => return GuardResult::allow(&self.name),
-        };
-
-        if self.is_forbidden(path) {
-            GuardResult::block(
-                &self.name,
-                Severity::Critical,
-                format!("Access to forbidden path: {}", path),
-            )
-            .with_details(serde_json::json!({
-                "path": path,
-                "reason": "matches_forbidden_pattern"
-            }))
-        } else {
-            GuardResult::allow(&self.name)
+    async fn check(&self, event: &Event, policy: &Policy) -> GuardResult {
+        match (&event.event_type, &event.data) {
+            (EventType::FileRead | EventType::FileWrite, EventData::File(data)) => {
+                self.check_path(&data.path, policy).await
+            }
+            (EventType::PatchApply, EventData::Patch(data)) => {
+                self.check_path(&data.file_path, policy).await
+            }
+            _ => GuardResult::Allow,
         }
     }
 }
@@ -165,52 +173,175 @@ impl Guard for ForbiddenPathGuard {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_default_forbidden_paths() {
-        let guard = ForbiddenPathGuard::new();
-
-        // SSH keys
-        assert!(guard.is_forbidden("/home/user/.ssh/id_rsa"));
-        assert!(guard.is_forbidden("/home/user/.ssh/authorized_keys"));
-
-        // AWS credentials
-        assert!(guard.is_forbidden("/home/user/.aws/credentials"));
-
-        // Environment files
-        assert!(guard.is_forbidden("/app/.env"));
-        assert!(guard.is_forbidden("/app/.env.local"));
-
-        // Normal files should be allowed
-        assert!(!guard.is_forbidden("/app/src/main.rs"));
-        assert!(!guard.is_forbidden("/home/user/project/README.md"));
-    }
-
-    #[test]
-    fn test_exceptions() {
-        let config = ForbiddenPathConfig {
-            patterns: vec!["**/.env".to_string()],
-            exceptions: vec!["**/project/.env".to_string()],
-        };
-        let guard = ForbiddenPathGuard::with_config(config);
-
-        assert!(guard.is_forbidden("/app/.env"));
-        assert!(!guard.is_forbidden("/app/project/.env"));
+    fn make_file_event(path: &str, write: bool) -> Event {
+        if write {
+            Event::file_write(path)
+        } else {
+            Event::file_read(path)
+        }
     }
 
     #[tokio::test]
-    async fn test_guard_check() {
+    async fn test_allows_normal_paths() {
         let guard = ForbiddenPathGuard::new();
-        let context = GuardContext::new();
+        let policy = Policy::default();
 
-        let result = guard
-            .check(&GuardAction::FileAccess("/home/user/.ssh/id_rsa"), &context)
-            .await;
-        assert!(!result.allowed);
-        assert_eq!(result.severity, Severity::Critical);
+        let event = make_file_event("/home/user/code/main.rs", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_allowed());
+    }
 
-        let result = guard
-            .check(&GuardAction::FileAccess("/app/src/main.rs"), &context)
-            .await;
-        assert!(result.allowed);
+    #[tokio::test]
+    async fn test_allows_workspace_paths() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/workspace/src/lib.rs", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_allowed());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_etc_shadow() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/etc/shadow", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_etc_passwd() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/etc/passwd", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_ssh_keys() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/home/user/.ssh/id_rsa", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_ssh_directory() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/home/user/.ssh/config", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_aws_credentials() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/home/user/.aws/credentials", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_gnupg() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/home/user/.gnupg/private-keys-v1.d/key.key", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_pem_files() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/home/user/certs/server.pem", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_env_files() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/home/user/project/.env", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_env_local() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/home/user/project/.env.local", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_custom_forbidden_path() {
+        let guard = ForbiddenPathGuard::new();
+        let mut policy = Policy::default();
+        policy
+            .filesystem
+            .forbidden_paths
+            .push("/secret/data".to_string());
+
+        let event = make_file_event("/secret/data/file.txt", false);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_write_to_forbidden() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = make_file_event("/etc/shadow", true);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_blocks_patch_to_forbidden() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = Event::patch_apply("/etc/passwd", "root:x:0:0::/root:/bin/bash");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_denied());
+    }
+
+    #[tokio::test]
+    async fn test_allows_patch_to_normal_path() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = Event::patch_apply("/workspace/main.py", "print('hello')");
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_allowed());
+    }
+
+    #[tokio::test]
+    async fn test_ignores_network_events() {
+        let guard = ForbiddenPathGuard::new();
+        let policy = Policy::default();
+
+        let event = Event::network_egress("api.github.com", 443);
+        let result = guard.check(&event, &policy).await;
+        assert!(result.is_allowed());
     }
 }

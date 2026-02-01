@@ -1,29 +1,14 @@
-//! Hushclaw - Security Guards and Policy Engine
+//! Hushclaw - Security policy enforcement guards for AI agent runtimes
 //!
-//! This crate provides security guards for AI agent execution:
-//! - ForbiddenPathGuard: Blocks access to sensitive paths
-//! - EgressAllowlistGuard: Controls network egress
-//! - SecretLeakGuard: Detects potential secret exposure
-//! - PatchIntegrityGuard: Validates patch safety
-//! - McpToolGuard: Restricts MCP tool invocations
-//!
-//! Guards can be composed into rulesets and configured via YAML.
+//! This crate provides modular security guards that check execution events
+//! against configured security policies.
 
+pub mod error;
+pub mod event;
 pub mod guards;
 pub mod policy;
-pub mod engine;
-pub mod error;
 
-pub use guards::{
-    Guard, GuardContext, GuardResult, Severity,
-    ForbiddenPathGuard, EgressAllowlistGuard, SecretLeakGuard,
-    PatchIntegrityGuard, McpToolGuard,
-};
-pub use policy::{Policy, RuleSet};
-pub use engine::HushEngine;
-pub use error::{Error, Result};
-
-/// Re-export core types
-pub mod core {
-    pub use hush_core::*;
-}
+pub use error::{Error, Result, Severity};
+pub use event::{Event, EventData, EventType};
+pub use guards::{Guard, GuardRegistry, GuardResult};
+pub use policy::Policy;
