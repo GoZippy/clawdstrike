@@ -20,6 +20,16 @@ from hush.guards import (
     McpToolGuard,
     McpToolConfig,
 )
+from hush.merkle import (
+    hash_leaf,
+    hash_node,
+    compute_root,
+    generate_proof,
+    MerkleTree,
+    MerkleProof,
+)
+from hush.canonical import canonicalize, canonical_hash
+from hush.native import NATIVE_AVAILABLE
 
 __version__ = "0.1.0"
 
@@ -56,4 +66,16 @@ __all__ = [
     "PatchIntegrityConfig",
     "McpToolGuard",
     "McpToolConfig",
+    # Merkle
+    "hash_leaf",
+    "hash_node",
+    "compute_root",
+    "generate_proof",
+    "MerkleTree",
+    "MerkleProof",
+    # Canonical JSON
+    "canonicalize",
+    "canonical_hash",
+    # Native backend
+    "NATIVE_AVAILABLE",
 ]
