@@ -8,15 +8,16 @@
 //! - hush policy validate <file> - Validate a policy file
 //! - hush daemon start/stop/status/reload - Daemon management
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::generate;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use hush_core::{Keypair, SignedReceipt};
 use hushclaw::{GuardContext, HushEngine, Policy, RuleSet};
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(name = "hush")]
-#[command(about = "Hushclaw security guard CLI", long_about = None)]
+#[command(version, about = "Hushclaw security guard CLI", long_about = None)]
 struct Cli {
     /// Verbosity level
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -26,7 +27,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// Check an action against policy
     Check {
@@ -70,9 +71,16 @@ enum Commands {
         #[command(subcommand)]
         command: DaemonCommands,
     },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for (bash, zsh, fish, powershell, elvish)
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum PolicyCommands {
     /// Show a ruleset's policy
     Show {
@@ -91,7 +99,7 @@ enum PolicyCommands {
     List,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum DaemonCommands {
     /// Start the daemon
     Start {
@@ -353,7 +361,15 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         },
+
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "hush", &mut std::io::stdout());
+        }
     }
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

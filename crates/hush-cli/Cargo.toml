@@ -18,6 +18,7 @@ path = "src/main.rs"
 hush-core.workspace = true
 hushclaw.workspace = true
 clap.workspace = true
+clap_complete = "4.4"
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
