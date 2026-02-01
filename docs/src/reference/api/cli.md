@@ -315,15 +315,29 @@ daemon:
   pidfile: /var/run/hushd.pid
 ```
 
-## Shell Completion
+## Shell Completions
+
+Generate shell completions for your preferred shell:
 
 ```bash
-# Bash
-hush completion bash > /etc/bash_completion.d/hush
+# Bash - system-wide
+sudo hush completions bash > /etc/bash_completion.d/hush
 
-# Zsh
-hush completion zsh > ~/.zsh/completions/_hush
+# Bash - user-local
+hush completions bash > ~/.local/share/bash-completion/completions/hush
+
+# Zsh - add to fpath
+hush completions zsh > ~/.zfunc/_hush
+# Then add to ~/.zshrc: fpath=(~/.zfunc $fpath)
 
 # Fish
-hush completion fish > ~/.config/fish/completions/hush.fish
+hush completions fish > ~/.config/fish/completions/hush.fish
+
+# PowerShell
+hush completions powershell > $PROFILE.CurrentUserAllHosts
+
+# Elvish
+hush completions elvish > ~/.elvish/lib/hush.elv
 ```
+
+Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`
