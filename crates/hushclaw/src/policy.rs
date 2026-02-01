@@ -220,6 +220,7 @@ impl RuleSet {
             allow: vec![],
             block: vec![],
             default_action: "block".to_string(),
+            ..Default::default()
         });
 
         // Strict MCP tools - block by default
@@ -233,6 +234,7 @@ impl RuleSet {
             require_confirmation: vec![],
             default_action: "block".to_string(),
             max_args_size: 1024 * 1024,
+            ..Default::default()
         });
 
         // Strict patch limits
@@ -267,6 +269,7 @@ impl RuleSet {
             allow: vec!["*".to_string()],
             block: vec![],
             default_action: "allow".to_string(),
+            ..Default::default()
         });
 
         // Higher patch limits
