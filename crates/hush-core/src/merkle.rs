@@ -10,8 +10,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Result, Error};
-use crate::hashing::{Hash, sha256};
+use crate::error::{Error, Result};
+use crate::hashing::{sha256, Hash};
 
 /// Compute leaf hash per RFC 6962: SHA256(0x00 || leaf_bytes)
 pub fn leaf_hash(leaf_bytes: &[u8]) -> Hash {
@@ -250,7 +250,9 @@ mod tests {
 
     #[test]
     fn inclusion_proofs_roundtrip() {
-        let leaves: Vec<Vec<u8>> = (0..25usize).map(|i| format!("leaf-{i}").into_bytes()).collect();
+        let leaves: Vec<Vec<u8>> = (0..25usize)
+            .map(|i| format!("leaf-{i}").into_bytes())
+            .collect();
         let tree = MerkleTree::from_leaves(&leaves).unwrap();
         let root = tree.root();
 
@@ -262,7 +264,9 @@ mod tests {
 
     #[test]
     fn inclusion_proof_rejects_wrong_leaf() {
-        let leaves: Vec<Vec<u8>> = (0..10usize).map(|i| format!("leaf-{i}").into_bytes()).collect();
+        let leaves: Vec<Vec<u8>> = (0..10usize)
+            .map(|i| format!("leaf-{i}").into_bytes())
+            .collect();
         let tree = MerkleTree::from_leaves(&leaves).unwrap();
         let root = tree.root();
 
@@ -300,7 +304,9 @@ mod tests {
 
     #[test]
     fn proof_serialization_roundtrip() {
-        let leaves: Vec<Vec<u8>> = (0..5usize).map(|i| format!("leaf-{i}").into_bytes()).collect();
+        let leaves: Vec<Vec<u8>> = (0..5usize)
+            .map(|i| format!("leaf-{i}").into_bytes())
+            .collect();
         let tree = MerkleTree::from_leaves(&leaves).unwrap();
         let proof = tree.inclusion_proof(2).unwrap();
 

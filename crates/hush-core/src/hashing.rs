@@ -1,10 +1,10 @@
 //! Cryptographic hashing (SHA-256 and Keccak-256)
 
-use sha2::{Sha256, Digest as Sha2Digest};
-use sha3::Keccak256;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as Sha2Digest, Sha256};
+use sha3::Keccak256;
 
-use crate::error::{Result, Error};
+use crate::error::{Error, Result};
 
 /// A 32-byte hash value
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub struct Hash {
 }
 
 mod hash_serde {
-    use serde::{Deserializer, Serializer, Deserialize};
+    use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(bytes: &[u8; 32], s: S) -> std::result::Result<S::Ok, S::Error>
     where
@@ -31,9 +31,9 @@ mod hash_serde {
         let hex_str = String::deserialize(d)?;
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(&hex_str);
         let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
-        bytes.try_into().map_err(|_| {
-            serde::de::Error::custom("hash must be 32 bytes")
-        })
+        bytes
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("hash must be 32 bytes"))
     }
 }
 
@@ -47,8 +47,7 @@ impl Hash {
     pub fn from_hex(hex_str: &str) -> Result<Self> {
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
 
-        let bytes = hex::decode(hex_str)
-            .map_err(|e| Error::InvalidHex(e.to_string()))?;
+        let bytes = hex::decode(hex_str).map_err(|e| Error::InvalidHex(e.to_string()))?;
 
         if bytes.len() != 32 {
             return Err(Error::InvalidHashLength {

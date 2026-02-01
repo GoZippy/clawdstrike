@@ -7,27 +7,24 @@
 //! - Canonical JSON (RFC 8785)
 //! - Receipt types and signing
 
-pub mod signing;
-pub mod hashing;
 pub mod canonical;
+pub mod error;
+pub mod hashing;
 pub mod merkle;
 pub mod receipt;
-pub mod error;
+pub mod signing;
 
-pub use signing::{Keypair, PublicKey, Signature};
-pub use hashing::{Hash, sha256, sha256_hex, keccak256, keccak256_hex};
 pub use canonical::canonicalize as canonicalize_json;
-pub use merkle::{MerkleTree, MerkleProof};
-pub use receipt::{Receipt, SignedReceipt, Verdict, Provenance};
 pub use error::{Error, Result};
+pub use hashing::{keccak256, keccak256_hex, sha256, sha256_hex, Hash};
+pub use merkle::{MerkleProof, MerkleTree};
+pub use receipt::{Provenance, Receipt, SignedReceipt, Verdict};
+pub use signing::{Keypair, PublicKey, Signature};
 
 /// Commonly used types
 pub mod prelude {
     pub use crate::{
-        Keypair, PublicKey, Signature,
-        Hash, sha256, keccak256,
-        MerkleTree, MerkleProof,
-        Receipt, SignedReceipt,
-        Error, Result,
+        keccak256, sha256, Error, Hash, Keypair, MerkleProof, MerkleTree, PublicKey, Receipt,
+        Result, Signature, SignedReceipt,
     };
 }

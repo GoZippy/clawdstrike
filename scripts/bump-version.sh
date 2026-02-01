@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Version bump script for hushclaw
+# Usage: ./scripts/bump-version.sh <version>
+# Example: ./scripts/bump-version.sh 0.2.0
+
+VERSION="${1:-}"
+
+if [[ -z "$VERSION" ]]; then
+    echo "Usage: $0 <version>"
+    echo "Example: $0 0.2.0"
+    exit 1
+fi
+
+# Validate version format (semver)
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+    echo "Error: Version must be in semver format (e.g., 0.2.0 or 0.2.0-alpha.1)"
+    exit 1
+fi
+
+echo "Bumping version to $VERSION..."
+
+# Detect sed flavor (GNU vs BSD)
+if sed --version 2>/dev/null | grep -q GNU; then
+    SED_INPLACE="sed -i"
+else
+    SED_INPLACE="sed -i ''"
+fi
+
+# Update root Cargo.toml workspace version
+echo "  Updating Cargo.toml workspace version..."
+$SED_INPLACE "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" Cargo.toml
+
+# Update all crate Cargo.toml files that use workspace version inheritance
+# (They inherit from workspace, so we only need to update the root)
+
+# Update package.json files
+if [[ -f "packages/hushclaw-openclaw/package.json" ]]; then
+    echo "  Updating packages/hushclaw-openclaw/package.json..."
+    # Use node/jq if available, otherwise sed
+    if command -v node &> /dev/null; then
+        node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('packages/hushclaw-openclaw/package.json', 'utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync('packages/hushclaw-openclaw/package.json', JSON.stringify(pkg, null, 2) + '\n');
+        "
+    else
+        $SED_INPLACE "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" packages/hushclaw-openclaw/package.json
+    fi
+fi
+
+# Update pyproject.toml if it exists
+if [[ -f "packages/hush-py/pyproject.toml" ]]; then
+    echo "  Updating packages/hush-py/pyproject.toml..."
+    $SED_INPLACE "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" packages/hush-py/pyproject.toml
+fi
+
+echo ""
+echo "Version bumped to $VERSION"
+echo ""
+echo "Next steps:"
+echo "  1. Review changes: git diff"
+echo "  2. Commit: git commit -am \"chore: bump version to \$VERSION\""
+echo "  3. Tag: git tag -a v\$VERSION -m \"Release v\$VERSION\""
+echo "  4. Push: git push && git push --tags"

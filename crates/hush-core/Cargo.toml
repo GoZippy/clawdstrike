@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords = ["security", "cryptography", "verification", "hushclaw"]
+categories = ["cryptography", "authentication"]
+readme = "../../README.md"
 
 [dependencies]
 ed25519-dalek.workspace = true

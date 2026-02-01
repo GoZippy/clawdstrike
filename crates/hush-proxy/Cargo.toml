@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords = ["security", "proxy", "network", "hushclaw"]
+categories = ["network-programming", "authentication"]
+readme = "../../README.md"
 
 [dependencies]
 thiserror.workspace = true

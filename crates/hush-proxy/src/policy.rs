@@ -169,8 +169,7 @@ mod tests {
 
     #[test]
     fn test_blocklist_precedence() {
-        let policy = DomainPolicy::permissive()
-            .block("bad.example.com");
+        let policy = DomainPolicy::permissive().block("bad.example.com");
 
         assert!(policy.is_allowed("good.example.com"));
         assert!(!policy.is_allowed("bad.example.com"));
@@ -178,8 +177,7 @@ mod tests {
 
     #[test]
     fn test_wildcard_block() {
-        let policy = DomainPolicy::permissive()
-            .block("*.blocked.com");
+        let policy = DomainPolicy::permissive().block("*.blocked.com");
 
         assert!(policy.is_allowed("allowed.com"));
         assert!(!policy.is_allowed("sub.blocked.com"));
@@ -188,8 +186,7 @@ mod tests {
 
     #[test]
     fn test_evaluate_detailed() {
-        let policy = DomainPolicy::new()
-            .allow("*.example.com");
+        let policy = DomainPolicy::new().allow("*.example.com");
 
         let result = policy.evaluate_detailed("sub.example.com");
         assert_eq!(result.action, PolicyAction::Allow);

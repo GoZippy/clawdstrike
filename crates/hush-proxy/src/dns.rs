@@ -9,7 +9,9 @@ use crate::error::{Error, Result};
 pub fn extract_domain_from_query(packet: &[u8]) -> Result<Option<String>> {
     // DNS header is 12 bytes minimum
     if packet.len() < 12 {
-        return Err(Error::DnsParseError("Packet too short for DNS header".into()));
+        return Err(Error::DnsParseError(
+            "Packet too short for DNS header".into(),
+        ));
     }
 
     // Check if it's a query (QR bit = 0)
@@ -41,7 +43,9 @@ pub fn extract_domain_from_query(packet: &[u8]) -> Result<Option<String>> {
 
         // Check for compression pointer (starts with 0b11)
         if len & 0xC0 == 0xC0 {
-            return Err(Error::DnsParseError("Compression pointers not supported in queries".into()));
+            return Err(Error::DnsParseError(
+                "Compression pointers not supported in queries".into(),
+            ));
         }
 
         if len > 63 {
