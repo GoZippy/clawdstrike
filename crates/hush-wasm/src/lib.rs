@@ -3,7 +3,7 @@
 //! This crate provides browser-side verification of hushclaw attestations.
 
 use wasm_bindgen::prelude::*;
-use hush_core::{sha256, keccak256};
+use hush_core::{sha256, keccak256, PublicKey, Signature};
 
 /// Initialize the WASM module (call once at startup)
 #[wasm_bindgen(start)]
