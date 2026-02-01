@@ -337,5 +337,41 @@ mod cli_parsing {
 
 #[cfg(test)]
 mod completions {
-    // Completion generation tests will be added in subsequent tasks
+    use clap::CommandFactory;
+    use clap_complete::{generate, Shell};
+
+    use crate::Cli;
+
+    #[test]
+    fn test_bash_completions_generated() {
+        let mut cmd = Cli::command();
+        let mut output = Vec::new();
+        generate(Shell::Bash, &mut cmd, "hush", &mut output);
+
+        let script = String::from_utf8(output).expect("valid UTF-8");
+        assert!(script.contains("_hush"), "Should contain bash function");
+        assert!(script.contains("check"), "Should contain check subcommand");
+        assert!(script.contains("completions"), "Should contain completions subcommand");
+    }
+
+    #[test]
+    fn test_zsh_completions_generated() {
+        let mut cmd = Cli::command();
+        let mut output = Vec::new();
+        generate(Shell::Zsh, &mut cmd, "hush", &mut output);
+
+        let script = String::from_utf8(output).expect("valid UTF-8");
+        assert!(script.contains("#compdef hush"), "Should have zsh compdef header");
+        assert!(script.contains("check"), "Should contain check subcommand");
+    }
+
+    #[test]
+    fn test_fish_completions_generated() {
+        let mut cmd = Cli::command();
+        let mut output = Vec::new();
+        generate(Shell::Fish, &mut cmd, "hush", &mut output);
+
+        let script = String::from_utf8(output).expect("valid UTF-8");
+        assert!(script.contains("complete -c hush"), "Should have fish complete command");
+    }
 }
