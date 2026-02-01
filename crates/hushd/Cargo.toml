@@ -1,0 +1,27 @@
+[package]
+name = "hushd"
+description = "Hushclaw daemon for runtime security enforcement"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "hushd"
+path = "src/main.rs"
+
+[dependencies]
+hush-core.workspace = true
+hush-proxy.workspace = true
+hushclaw.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[features]
+default = []

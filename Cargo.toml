@@ -1,0 +1,65 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/hush-core",
+    "crates/hush-proxy",
+    "crates/hushclaw",
+    "crates/hush-cli",
+    "crates/hushd",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/hushclaw/hushclaw"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Crypto
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+sha2 = "0.10"
+sha3 = "0.10"
+rand = "0.8"
+hex = "0.4"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+
+# Patterns
+regex = "1.10"
+glob = "0.3"
+globset = "0.4"
+ipnet = "2.9"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+
+# Internal crates
+hush-core = { path = "crates/hush-core" }
+hush-proxy = { path = "crates/hush-proxy" }
+hushclaw = { path = "crates/hushclaw" }
+
+[profile.release]
+lto = true
+codegen-units = 1
