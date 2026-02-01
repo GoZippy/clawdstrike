@@ -75,8 +75,7 @@ pub fn domain_matches(domain: &str, pattern: &str) -> bool {
     let domain = domain.to_lowercase();
     let pattern = pattern.to_lowercase();
 
-    if pattern.starts_with("*.") {
-        let suffix = &pattern[2..];
+    if let Some(suffix) = pattern.strip_prefix("*.") {
         domain == suffix || domain.ends_with(&format!(".{}", suffix))
     } else {
         domain == pattern

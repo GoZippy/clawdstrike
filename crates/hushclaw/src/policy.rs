@@ -188,9 +188,11 @@ impl RuleSet {
 
     /// Load the "strict" ruleset
     pub fn strict() -> Self {
-        let mut policy = Policy::default();
-        policy.name = "Strict".to_string();
-        policy.description = "Strict security rules with minimal permissions".to_string();
+        let mut policy = Policy {
+            name: "Strict".to_string(),
+            description: "Strict security rules with minimal permissions".to_string(),
+            ..Default::default()
+        };
 
         // Strict egress - block by default
         policy.guards.egress_allowlist = Some(EgressAllowlistConfig {
@@ -233,9 +235,11 @@ impl RuleSet {
 
     /// Load the "permissive" ruleset (for development)
     pub fn permissive() -> Self {
-        let mut policy = Policy::default();
-        policy.name = "Permissive".to_string();
-        policy.description = "Permissive rules for development (use with caution)".to_string();
+        let mut policy = Policy {
+            name: "Permissive".to_string(),
+            description: "Permissive rules for development (use with caution)".to_string(),
+            ..Default::default()
+        };
 
         // Allow all egress
         policy.guards.egress_allowlist = Some(EgressAllowlistConfig {
