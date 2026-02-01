@@ -1,0 +1,18 @@
+[package]
+name = "hush-native"
+version = "0.1.0"
+edition = "2021"
+description = "Native Rust bindings for hush Python SDK"
+license = "MIT"
+
+[lib]
+name = "hush_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module"] }
+hush-core = { path = "../../../crates/hush-core" }
+hex = "0.4"
+
+[build-dependencies]
+pyo3-build-config = "0.20"
