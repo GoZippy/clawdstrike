@@ -1,11 +1,46 @@
-//! Hush Core Cryptographic Primitives
+//! # hush-core
 //!
-//! Core cryptographic operations for the hushclaw attestation system:
+//! Cryptographic primitives for the hushclaw attestation system.
+//!
+//! This crate provides:
 //! - Ed25519 signing and verification
 //! - SHA-256 and Keccak-256 hashing
 //! - Merkle tree construction and proof verification
 //! - Canonical JSON (RFC 8785)
 //! - Receipt types and signing
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use hush_core::{sha256, keccak256, Keypair};
+//!
+//! // Hash some data
+//! let hash = sha256(b"hello world");
+//! assert_eq!(hash.as_bytes().len(), 32);
+//!
+//! // Keccak-256 (Ethereum-compatible)
+//! let eth_hash = keccak256(b"hello world");
+//! assert_eq!(eth_hash.as_bytes().len(), 32);
+//!
+//! // Sign and verify
+//! let keypair = Keypair::generate();
+//! let message = b"important message";
+//! let signature = keypair.sign(message);
+//! assert!(keypair.public_key().verify(message, &signature));
+//! ```
+//!
+//! ## Merkle Trees
+//!
+//! ```rust
+//! use hush_core::MerkleTree;
+//!
+//! let leaves = vec![b"leaf1".to_vec(), b"leaf2".to_vec(), b"leaf3".to_vec()];
+//! let tree = MerkleTree::from_leaves(&leaves).unwrap();
+//!
+//! // Generate and verify inclusion proof
+//! let proof = tree.inclusion_proof(1).unwrap();
+//! assert!(proof.verify(&leaves[1], &tree.root()));
+//! ```
 
 pub mod canonical;
 pub mod error;

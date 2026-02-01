@@ -14,6 +14,15 @@ use crate::error::{Error, Result};
 use crate::hashing::{sha256, Hash};
 
 /// Compute leaf hash per RFC 6962: SHA256(0x00 || leaf_bytes)
+///
+/// # Examples
+///
+/// ```rust
+/// use hush_core::merkle::leaf_hash;
+///
+/// let hash = leaf_hash(b"hello");
+/// assert_eq!(hash.as_bytes().len(), 32);
+/// ```
 pub fn leaf_hash(leaf_bytes: &[u8]) -> Hash {
     let mut buf = Vec::with_capacity(1 + leaf_bytes.len());
     buf.push(0x00);
@@ -37,7 +46,17 @@ pub struct MerkleTree {
 }
 
 impl MerkleTree {
-    /// Build a Merkle tree from leaf data
+    /// Build a Merkle tree from leaf data.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hush_core::MerkleTree;
+    ///
+    /// let leaves = vec![b"a".to_vec(), b"b".to_vec(), b"c".to_vec()];
+    /// let tree = MerkleTree::from_leaves(&leaves).unwrap();
+    /// assert_eq!(tree.leaf_count(), 3);
+    /// ```
     pub fn from_leaves<T: AsRef<[u8]>>(leaves: &[T]) -> Result<Self> {
         if leaves.is_empty() {
             return Err(Error::EmptyTree);
@@ -108,7 +127,18 @@ impl MerkleTree {
             .unwrap_or_else(Hash::zero)
     }
 
-    /// Generate an inclusion proof for a leaf at the given index
+    /// Generate an inclusion proof for a leaf at the given index.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use hush_core::MerkleTree;
+    ///
+    /// let leaves = vec![b"a".to_vec(), b"b".to_vec()];
+    /// let tree = MerkleTree::from_leaves(&leaves).unwrap();
+    /// let proof = tree.inclusion_proof(0).unwrap();
+    /// assert!(proof.verify(&leaves[0], &tree.root()));
+    /// ```
     pub fn inclusion_proof(&self, leaf_index: usize) -> Result<MerkleProof> {
         let tree_size = self.leaf_count();
         if leaf_index >= tree_size {

@@ -9,6 +9,7 @@ members = [
     "crates/hush-wasm",
     "packages/hush-py/hush-native",
 ]
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"
