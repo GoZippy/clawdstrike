@@ -52,3 +52,30 @@ pub fn hash_sha256_prefixed(data: &[u8]) -> String {
 pub fn hash_keccak256(data: &[u8]) -> String {
     keccak256(data).to_hex_prefixed()
 }
+
+// ============================================================================
+// Signature Verification
+// ============================================================================
+
+/// Verify an Ed25519 signature over a message.
+///
+/// # Arguments
+/// * `public_key_hex` - Hex-encoded public key (32 bytes, with or without 0x prefix)
+/// * `message` - The message bytes that were signed
+/// * `signature_hex` - Hex-encoded signature (64 bytes, with or without 0x prefix)
+///
+/// # Returns
+/// `true` if the signature is valid, `false` otherwise
+#[wasm_bindgen]
+pub fn verify_ed25519(
+    public_key_hex: &str,
+    message: &[u8],
+    signature_hex: &str,
+) -> Result<bool, JsError> {
+    let pubkey = PublicKey::from_hex(public_key_hex)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    let sig = Signature::from_hex(signature_hex)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+
+    Ok(pubkey.verify(message, &sig))
+}
