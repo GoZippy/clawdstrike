@@ -78,17 +78,8 @@ impl TestDaemon {
 impl Drop for TestDaemon {
     fn drop(&mut self) {
         if let Some(mut process) = self.process.take() {
-            // Send SIGTERM on Unix, just kill on Windows
-            #[cfg(unix)]
-            {
-                unsafe {
-                    libc::kill(process.id() as i32, libc::SIGTERM);
-                }
-            }
-            #[cfg(not(unix))]
-            {
-                let _ = process.kill();
-            }
+            // Just kill the process - it handles SIGTERM gracefully
+            let _ = process.kill();
             let _ = process.wait();
         }
     }
