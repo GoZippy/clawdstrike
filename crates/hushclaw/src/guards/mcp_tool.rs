@@ -1,91 +1,119 @@
-//! MCP Tool Guard
-//!
-//! Controls which MCP tools and commands are allowed to execute.
+//! MCP tool guard - restricts tool invocations
 
 use async_trait::async_trait;
-use tracing::debug;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
-use super::{Guard, GuardResult};
-use crate::error::Severity;
-use crate::event::{Event, EventData, EventType};
-use crate::policy::Policy;
+use super::{Guard, GuardAction, GuardContext, GuardResult, Severity};
 
-/// Guard that enforces tool and command allowlists
-pub struct McpToolGuard;
+/// Configuration for McpToolGuard
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct McpToolConfig {
+    /// Allowed tool names (if empty, all are allowed except blocked)
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// Blocked tool names (takes precedence)
+    #[serde(default)]
+    pub block: Vec<String>,
+    /// Tools that require confirmation
+    #[serde(default)]
+    pub require_confirmation: Vec<String>,
+    /// Default action (allow or block)
+    #[serde(default = "default_action")]
+    pub default_action: String,
+    /// Maximum arguments size (bytes)
+    #[serde(default = "default_max_args_size")]
+    pub max_args_size: usize,
+}
+
+fn default_action() -> String {
+    "allow".to_string()
+}
+
+fn default_max_args_size() -> usize {
+    1024 * 1024 // 1MB
+}
+
+impl Default for McpToolConfig {
+    fn default() -> Self {
+        Self {
+            allow: vec![],
+            block: vec![
+                // Dangerous shell operations
+                "shell_exec".to_string(),
+                "run_command".to_string(),
+                // Direct file system access that bypasses guards
+                "raw_file_write".to_string(),
+                "raw_file_delete".to_string(),
+            ],
+            require_confirmation: vec![
+                "file_write".to_string(),
+                "file_delete".to_string(),
+                "git_push".to_string(),
+            ],
+            default_action: "allow".to_string(),
+            max_args_size: default_max_args_size(),
+        }
+    }
+}
+
+/// Guard that controls MCP tool invocations
+pub struct McpToolGuard {
+    name: String,
+    config: McpToolConfig,
+    allow_set: HashSet<String>,
+    block_set: HashSet<String>,
+    confirm_set: HashSet<String>,
+}
 
 impl McpToolGuard {
+    /// Create with default configuration
     pub fn new() -> Self {
-        Self
+        Self::with_config(McpToolConfig::default())
     }
 
-    fn check_command(&self, command: &str, args: &[String], policy: &Policy) -> GuardResult {
-        // Build full command string for pattern matching
-        let full_cmd = if args.is_empty() {
-            command.to_string()
-        } else {
-            format!("{} {}", command, args.join(" "))
-        };
+    /// Create with custom configuration
+    pub fn with_config(config: McpToolConfig) -> Self {
+        let allow_set: HashSet<_> = config.allow.iter().cloned().collect();
+        let block_set: HashSet<_> = config.block.iter().cloned().collect();
+        let confirm_set: HashSet<_> = config.require_confirmation.iter().cloned().collect();
 
-        // Check against deny patterns first (dangerous commands)
-        for pattern in &policy.execution.denied_patterns {
-            if full_cmd.contains(pattern) {
-                debug!("Command '{}' matches deny pattern '{}'", full_cmd, pattern);
-                return GuardResult::Deny {
-                    reason: format!("Command matches dangerous pattern: {}", pattern),
-                    severity: Severity::Critical,
-                };
-            }
-        }
-
-        // If allowed_commands is empty, all commands are allowed (except denied patterns)
-        if policy.execution.allowed_commands.is_empty() {
-            return GuardResult::Allow;
-        }
-
-        // Extract the base command (first word)
-        let base_cmd = command.split_whitespace().next().unwrap_or("");
-
-        // Also check the last path component for full paths
-        let cmd_name = std::path::Path::new(base_cmd)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(base_cmd);
-
-        // Check if command is in allowed list
-        if policy.execution.allowed_commands.iter().any(|allowed| {
-            allowed == cmd_name || allowed == base_cmd || cmd_name.starts_with(allowed)
-        }) {
-            return GuardResult::Allow;
-        }
-
-        GuardResult::Deny {
-            reason: format!("Command '{}' is not in the allowed commands list", cmd_name),
-            severity: Severity::Medium,
+        Self {
+            name: "mcp_tool".to_string(),
+            config,
+            allow_set,
+            block_set,
+            confirm_set,
         }
     }
 
-    fn check_tool(&self, tool_name: &str, policy: &Policy) -> GuardResult {
-        // Check against denied tools first
-        if policy.tools.denied.contains(&tool_name.to_string()) {
-            return GuardResult::Deny {
-                reason: format!("Tool '{}' is explicitly denied", tool_name),
-                severity: Severity::High,
-            };
+    /// Check if a tool is allowed
+    pub fn is_allowed(&self, tool_name: &str) -> ToolDecision {
+        // Blocked takes precedence
+        if self.block_set.contains(tool_name) {
+            return ToolDecision::Block;
         }
 
-        // If allowed list is empty, all tools are allowed (except denied)
-        if policy.tools.allowed.is_empty() {
-            return GuardResult::Allow;
+        // Check if requires confirmation
+        if self.confirm_set.contains(tool_name) {
+            return ToolDecision::RequireConfirmation;
         }
 
-        // Check if tool is in allowed list
-        if policy.tools.allowed.contains(&tool_name.to_string()) {
-            GuardResult::Allow
-        } else {
-            GuardResult::Deny {
-                reason: format!("Tool '{}' is not in the allowed tools list", tool_name),
-                severity: Severity::Medium,
+        // Check allowlist mode
+        if !self.allow_set.is_empty() {
+            // Allowlist mode: only allowed tools pass
+            if self.allow_set.contains(tool_name) {
+                return ToolDecision::Allow;
+            } else {
+                return ToolDecision::Block;
             }
+        }
+
+        // Default action
+        if self.config.default_action == "block" {
+            ToolDecision::Block
+        } else {
+            ToolDecision::Allow
         }
     }
 }
@@ -96,21 +124,62 @@ impl Default for McpToolGuard {
     }
 }
 
+/// Decision for a tool invocation
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ToolDecision {
+    Allow,
+    Block,
+    RequireConfirmation,
+}
+
 #[async_trait]
 impl Guard for McpToolGuard {
     fn name(&self) -> &str {
-        "mcp_tool"
+        &self.name
     }
 
-    async fn check(&self, event: &Event, policy: &Policy) -> GuardResult {
-        match (&event.event_type, &event.data) {
-            (EventType::CommandExec, EventData::Command(data)) => {
-                self.check_command(&data.command, &data.args, policy)
-            }
-            (EventType::ToolCall, EventData::Tool(data)) => {
-                self.check_tool(&data.tool_name, policy)
-            }
-            _ => GuardResult::Allow,
+    fn handles(&self, action: &GuardAction<'_>) -> bool {
+        matches!(action, GuardAction::McpTool(_, _))
+    }
+
+    async fn check(&self, action: &GuardAction<'_>, _context: &GuardContext) -> GuardResult {
+        let (tool_name, args) = match action {
+            GuardAction::McpTool(name, args) => (*name, *args),
+            _ => return GuardResult::allow(&self.name),
+        };
+
+        // Check args size
+        let args_size = args.to_string().len();
+        if args_size > self.config.max_args_size {
+            return GuardResult::block(
+                &self.name,
+                Severity::Error,
+                format!(
+                    "Tool arguments too large: {} bytes (max: {})",
+                    args_size, self.config.max_args_size
+                ),
+            );
+        }
+
+        match self.is_allowed(tool_name) {
+            ToolDecision::Allow => GuardResult::allow(&self.name),
+            ToolDecision::Block => GuardResult::block(
+                &self.name,
+                Severity::Error,
+                format!("Tool '{}' is blocked by policy", tool_name),
+            )
+            .with_details(serde_json::json!({
+                "tool": tool_name,
+                "reason": "blocked_by_policy",
+            })),
+            ToolDecision::RequireConfirmation => GuardResult::warn(
+                &self.name,
+                format!("Tool '{}' requires confirmation", tool_name),
+            )
+            .with_details(serde_json::json!({
+                "tool": tool_name,
+                "requires_confirmation": true,
+            })),
         }
     }
 }
@@ -119,152 +188,81 @@ impl Guard for McpToolGuard {
 mod tests {
     use super::*;
 
-    fn make_command_event(command: &str, args: Vec<&str>) -> Event {
-        Event::command_exec(command, args.into_iter().map(String::from).collect())
+    #[test]
+    fn test_default_blocked() {
+        let guard = McpToolGuard::new();
+
+        assert_eq!(guard.is_allowed("shell_exec"), ToolDecision::Block);
+        assert_eq!(guard.is_allowed("run_command"), ToolDecision::Block);
     }
 
-    fn make_tool_event(tool_name: &str) -> Event {
-        Event::tool_call(tool_name)
+    #[test]
+    fn test_default_allowed() {
+        let guard = McpToolGuard::new();
+
+        assert_eq!(guard.is_allowed("read_file"), ToolDecision::Allow);
+        assert_eq!(guard.is_allowed("list_directory"), ToolDecision::Allow);
+    }
+
+    #[test]
+    fn test_require_confirmation() {
+        let guard = McpToolGuard::new();
+
+        assert_eq!(
+            guard.is_allowed("file_write"),
+            ToolDecision::RequireConfirmation
+        );
+        assert_eq!(
+            guard.is_allowed("git_push"),
+            ToolDecision::RequireConfirmation
+        );
+    }
+
+    #[test]
+    fn test_allowlist_mode() {
+        let config = McpToolConfig {
+            allow: vec!["safe_tool".to_string()],
+            block: vec![],
+            require_confirmation: vec![],
+            default_action: "block".to_string(),
+            max_args_size: 1024,
+        };
+        let guard = McpToolGuard::with_config(config);
+
+        assert_eq!(guard.is_allowed("safe_tool"), ToolDecision::Allow);
+        assert_eq!(guard.is_allowed("other_tool"), ToolDecision::Block);
     }
 
     #[tokio::test]
-    async fn test_allows_any_command_with_empty_allowlist() {
+    async fn test_guard_check() {
         let guard = McpToolGuard::new();
-        let policy = Policy::default(); // Empty allowed_commands by default
+        let context = GuardContext::new();
 
-        let event = make_command_event("git", vec!["status"]);
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_allowed());
+        let args = serde_json::json!({"path": "/app/file.txt"});
+        let result = guard
+            .check(&GuardAction::McpTool("read_file", &args), &context)
+            .await;
+        assert!(result.allowed);
+
+        let result = guard
+            .check(&GuardAction::McpTool("shell_exec", &args), &context)
+            .await;
+        assert!(!result.allowed);
     }
 
     #[tokio::test]
-    async fn test_allows_command_in_allowlist() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.execution.allowed_commands = vec!["git".to_string(), "python".to_string()];
+    async fn test_args_size_limit() {
+        let config = McpToolConfig {
+            max_args_size: 100,
+            ..Default::default()
+        };
+        let guard = McpToolGuard::with_config(config);
+        let context = GuardContext::new();
 
-        let event = make_command_event("git", vec!["status"]);
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_allowed());
-    }
-
-    #[tokio::test]
-    async fn test_blocks_command_not_in_allowlist() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.execution.allowed_commands = vec!["git".to_string()];
-
-        let event = make_command_event("curl", vec!["https://example.com"]);
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_denied());
-    }
-
-    #[tokio::test]
-    async fn test_blocks_dangerous_pattern() {
-        let guard = McpToolGuard::new();
-        let policy = Policy::default(); // Has default denied patterns
-
-        let event = make_command_event("rm", vec!["-rf", "/"]);
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_denied());
-    }
-
-    #[tokio::test]
-    async fn test_blocks_dangerous_pattern_even_if_allowed() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.execution.allowed_commands = vec!["rm".to_string()];
-
-        let event = make_command_event("rm", vec!["-rf", "/"]);
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_denied());
-    }
-
-    #[tokio::test]
-    async fn test_allows_full_path_command() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.execution.allowed_commands = vec!["python".to_string()];
-
-        let event = make_command_event("/usr/bin/python", vec!["script.py"]);
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_allowed());
-    }
-
-    #[tokio::test]
-    async fn test_allows_tool_with_empty_allowlist() {
-        let guard = McpToolGuard::new();
-        let policy = Policy::default();
-
-        let event = make_tool_event("read_file");
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_allowed());
-    }
-
-    #[tokio::test]
-    async fn test_allows_tool_in_allowlist() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.tools.allowed = vec!["read_file".to_string(), "write_file".to_string()];
-
-        let event = make_tool_event("read_file");
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_allowed());
-    }
-
-    #[tokio::test]
-    async fn test_blocks_tool_not_in_allowlist() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.tools.allowed = vec!["read_file".to_string()];
-
-        let event = make_tool_event("exec_command");
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_denied());
-    }
-
-    #[tokio::test]
-    async fn test_blocks_denied_tool() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.tools.denied = vec!["dangerous_tool".to_string()];
-
-        let event = make_tool_event("dangerous_tool");
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_denied());
-    }
-
-    #[tokio::test]
-    async fn test_denied_tool_takes_precedence() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.tools.allowed = vec!["dangerous_tool".to_string()];
-        policy.tools.denied = vec!["dangerous_tool".to_string()];
-
-        let event = make_tool_event("dangerous_tool");
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_denied());
-    }
-
-    #[tokio::test]
-    async fn test_ignores_file_events() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.execution.allowed_commands = vec!["git".to_string()]; // Restrictive
-
-        let event = Event::file_read("/etc/passwd");
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_allowed());
-    }
-
-    #[tokio::test]
-    async fn test_ignores_network_events() {
-        let guard = McpToolGuard::new();
-        let mut policy = Policy::default();
-        policy.tools.allowed = vec!["read_file".to_string()]; // Restrictive
-
-        let event = Event::network_egress("api.github.com", 443);
-        let result = guard.check(&event, &policy).await;
-        assert!(result.is_allowed());
+        let large_args = serde_json::json!({"data": "x".repeat(200)});
+        let result = guard
+            .check(&GuardAction::McpTool("some_tool", &large_args), &context)
+            .await;
+        assert!(!result.allowed);
     }
 }

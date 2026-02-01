@@ -19,6 +19,10 @@ tokio.workspace = true
 tracing.workspace = true
 regex.workspace = true
 glob.workspace = true
+chrono.workspace = true
+ipnet.workspace = true
+globset.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
