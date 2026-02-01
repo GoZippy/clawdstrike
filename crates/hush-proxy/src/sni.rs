@@ -19,7 +19,7 @@ pub fn extract_sni(data: &[u8]) -> Result<Option<String>> {
 
     // Check version (TLS 1.0 = 0x0301, TLS 1.1 = 0x0302, TLS 1.2 = 0x0303)
     let version = u16::from_be_bytes([data[1], data[2]]);
-    if version < 0x0300 || version > 0x0304 {
+    if !(0x0300..=0x0304).contains(&version) {
         return Ok(None);
     }
 

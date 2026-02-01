@@ -100,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
                     if let Some(port) = port {
                         config.listen = format!("{}:{}", bind, port);
                     } else {
-                        let current_port = config.listen.split(':').last().unwrap_or("9876");
+                        let current_port = config.listen.split(':').next_back().unwrap_or("9876");
                         config.listen = format!("{}:{}", bind, current_port);
                     }
                 } else if let Some(port) = port {

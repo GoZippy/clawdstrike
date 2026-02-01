@@ -73,7 +73,7 @@ fn canonicalize_f64(v: f64) -> Result<String> {
 
     let sign = if v.is_sign_negative() { "-" } else { "" };
     let abs = v.abs();
-    let use_exponential = abs >= 1e21 || abs < 1e-6;
+    let use_exponential = !(1e-6..1e21).contains(&abs);
 
     let (digits, sci_exp) = parse_to_scientific_parts(&format!("{:?}", abs))?;
 

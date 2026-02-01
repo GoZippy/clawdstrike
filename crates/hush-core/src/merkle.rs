@@ -48,7 +48,7 @@ impl MerkleTree {
         levels.push(current.clone());
 
         while current.len() > 1 {
-            let mut next: Vec<Hash> = Vec::with_capacity((current.len() + 1) / 2);
+            let mut next: Vec<Hash> = Vec::with_capacity(current.len().div_ceil(2));
             let mut i = 0;
             while i < current.len() {
                 if i + 1 < current.len() {
@@ -77,7 +77,7 @@ impl MerkleTree {
         levels.push(current.clone());
 
         while current.len() > 1 {
-            let mut next: Vec<Hash> = Vec::with_capacity((current.len() + 1) / 2);
+            let mut next: Vec<Hash> = Vec::with_capacity(current.len().div_ceil(2));
             let mut i = 0;
             while i < current.len() {
                 if i + 1 < current.len() {
@@ -186,7 +186,7 @@ impl MerkleProof {
             }
 
             idx /= 2;
-            size = (size + 1) / 2;
+            size = size.div_ceil(2);
         }
 
         if it.next().is_some() {

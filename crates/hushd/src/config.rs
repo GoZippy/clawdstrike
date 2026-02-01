@@ -100,7 +100,7 @@ impl Config {
         let config = if path
             .as_ref()
             .extension()
-            .map_or(false, |e| e == "yaml" || e == "yml")
+            .is_some_and(|e| e == "yaml" || e == "yml")
         {
             serde_yaml::from_str(&content)?
         } else {
