@@ -28,6 +28,7 @@ from hush.merkle import (
     MerkleTree,
     MerkleProof,
 )
+from hush.canonical import canonicalize, canonical_hash
 
 __version__ = "0.1.0"
 
@@ -71,4 +72,7 @@ __all__ = [
     "generate_proof",
     "MerkleTree",
     "MerkleProof",
+    # Canonical JSON
+    "canonicalize",
+    "canonical_hash",
 ]
