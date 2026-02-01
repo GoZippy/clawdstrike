@@ -48,17 +48,16 @@ async fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::filter::LevelFilter::from_level(log_level))
+        .with(tracing_subscriber::filter::LevelFilter::from_level(
+            log_level,
+        ))
         .init();
 
     // Load ruleset
     let ruleset = RuleSet::by_name(&cli.ruleset)
         .ok_or_else(|| anyhow::anyhow!("Unknown ruleset: {}", cli.ruleset))?;
 
-    tracing::info!(
-        ruleset = ruleset.id,
-        "Starting hushd with ruleset"
-    );
+    tracing::info!(ruleset = ruleset.id, "Starting hushd with ruleset");
 
     // Create engine
     let mut engine = HushEngine::with_policy(ruleset.policy);
@@ -71,7 +70,9 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Loaded signing key from {}", key_path);
     } else {
         engine = engine.with_generated_keypair();
-        tracing::warn!("Using generated ephemeral keypair (receipts won't be verifiable across restarts)");
+        tracing::warn!(
+            "Using generated ephemeral keypair (receipts won't be verifiable across restarts)"
+        );
     }
 
     // TODO: Implement HTTP server

@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use crate::error::{Result, Error};
+use crate::error::{Error, Result};
 
 /// Canonicalize a JSON value using RFC 8785 (JCS).
 pub fn canonicalize(value: &Value) -> Result<String> {
@@ -62,7 +62,9 @@ fn canonicalize_number(n: &serde_json::Number) -> Result<String> {
 /// JCS number serialization for IEEE-754 doubles (aligns with `JSON.stringify()`).
 fn canonicalize_f64(v: f64) -> Result<String> {
     if !v.is_finite() {
-        return Err(Error::JsonError("Non-finite numbers are not valid JSON".into()));
+        return Err(Error::JsonError(
+            "Non-finite numbers are not valid JSON".into(),
+        ));
     }
     if v == 0.0 {
         // Normalize -0 to 0
@@ -255,8 +257,7 @@ mod tests {
             canonical,
             format!(
                 r#"{{"emoji":"X","nl":"\n","s":"e","tab":"\t","u2028":"{}","u2029":"{}"}}"#,
-                "\u{2028}",
-                "\u{2029}"
+                "\u{2028}", "\u{2029}"
             )
         );
     }

@@ -1,14 +1,10 @@
 //! Ed25519 signing and verification
 
-use ed25519_dalek::{
-    SigningKey, VerifyingKey,
-    Signature as DalekSignature,
-    Signer, Verifier,
-};
+use ed25519_dalek::{Signature as DalekSignature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Result, Error};
+use crate::error::{Error, Result};
 
 /// Ed25519 keypair for signing
 #[derive(Clone)]
@@ -32,8 +28,7 @@ impl Keypair {
     /// Create from hex-encoded seed
     pub fn from_hex(hex_seed: &str) -> Result<Self> {
         let hex_seed = hex_seed.strip_prefix("0x").unwrap_or(hex_seed);
-        let bytes = hex::decode(hex_seed)
-            .map_err(|e| Error::InvalidHex(e.to_string()))?;
+        let bytes = hex::decode(hex_seed).map_err(|e| Error::InvalidHex(e.to_string()))?;
 
         if bytes.len() != 32 {
             return Err(Error::InvalidPrivateKey);
@@ -89,9 +84,9 @@ mod pubkey_serde {
         let hex_str = String::deserialize(d)?;
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(&hex_str);
         let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
-        let bytes: [u8; 32] = bytes.try_into().map_err(|_| {
-            serde::de::Error::custom("public key must be 32 bytes")
-        })?;
+        let bytes: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("public key must be 32 bytes"))?;
         VerifyingKey::from_bytes(&bytes).map_err(serde::de::Error::custom)
     }
 }
@@ -99,16 +94,15 @@ mod pubkey_serde {
 impl PublicKey {
     /// Create from raw bytes (32 bytes)
     pub fn from_bytes(bytes: &[u8; 32]) -> Result<Self> {
-        let verifying_key = VerifyingKey::from_bytes(bytes)
-            .map_err(|e| Error::InvalidPublicKey(e.to_string()))?;
+        let verifying_key =
+            VerifyingKey::from_bytes(bytes).map_err(|e| Error::InvalidPublicKey(e.to_string()))?;
         Ok(Self { verifying_key })
     }
 
     /// Create from hex-encoded bytes
     pub fn from_hex(hex_str: &str) -> Result<Self> {
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-        let bytes = hex::decode(hex_str)
-            .map_err(|e| Error::InvalidHex(e.to_string()))?;
+        let bytes = hex::decode(hex_str).map_err(|e| Error::InvalidHex(e.to_string()))?;
 
         if bytes.len() != 32 {
             return Err(Error::InvalidPublicKey(format!(
@@ -169,9 +163,9 @@ mod sig_serde {
         let hex_str = String::deserialize(d)?;
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(&hex_str);
         let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
-        let bytes: [u8; 64] = bytes.try_into().map_err(|_| {
-            serde::de::Error::custom("signature must be 64 bytes")
-        })?;
+        let bytes: [u8; 64] = bytes
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("signature must be 64 bytes"))?;
         Ok(DalekSignature::from_bytes(&bytes))
     }
 }
@@ -187,8 +181,7 @@ impl Signature {
     /// Create from hex-encoded bytes
     pub fn from_hex(hex_str: &str) -> Result<Self> {
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-        let bytes = hex::decode(hex_str)
-            .map_err(|e| Error::InvalidHex(e.to_string()))?;
+        let bytes = hex::decode(hex_str).map_err(|e| Error::InvalidHex(e.to_string()))?;
 
         if bytes.len() != 64 {
             return Err(Error::InvalidSignature);

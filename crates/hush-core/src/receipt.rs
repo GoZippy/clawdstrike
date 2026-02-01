@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::error::Result;
-use crate::signing::{Keypair, PublicKey, Signature, verify_signature};
-use crate::hashing::{Hash, sha256, keccak256};
+use crate::hashing::{keccak256, sha256, Hash};
+use crate::signing::{verify_signature, Keypair, PublicKey, Signature};
 
 /// Verdict result from quality gates or guards
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -236,11 +236,8 @@ impl SignedReceipt {
         };
 
         // Verify primary signature (required)
-        result.signer_valid = verify_signature(
-            &public_keys.signer,
-            message,
-            &self.signatures.signer,
-        );
+        result.signer_valid =
+            verify_signature(&public_keys.signer, message, &self.signatures.signer);
         if !result.signer_valid {
             result.valid = false;
             result.errors.push("Invalid signer signature".to_string());
@@ -353,8 +350,8 @@ mod tests {
         let mut signed = SignedReceipt::sign(receipt, &signer_kp).unwrap();
         signed.add_cosigner(&cosigner_kp).unwrap();
 
-        let keys = PublicKeySet::new(signer_kp.public_key())
-            .with_cosigner(cosigner_kp.public_key());
+        let keys =
+            PublicKeySet::new(signer_kp.public_key()).with_cosigner(cosigner_kp.public_key());
 
         let result = signed.verify(&keys);
 
@@ -376,7 +373,9 @@ mod tests {
 
         assert!(!result.valid);
         assert!(!result.signer_valid);
-        assert!(result.errors.contains(&"Invalid signer signature".to_string()));
+        assert!(result
+            .errors
+            .contains(&"Invalid signer signature".to_string()));
     }
 
     #[test]

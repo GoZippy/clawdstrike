@@ -11,7 +11,7 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use hush_core::{Keypair, SignedReceipt};
-use hushclaw::{HushEngine, Policy, RuleSet, GuardContext};
+use hushclaw::{GuardContext, HushEngine, Policy, RuleSet};
 
 #[derive(Parser)]
 #[command(name = "hush")]
@@ -98,11 +98,17 @@ async fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::filter::LevelFilter::from_level(log_level))
+        .with(tracing_subscriber::filter::LevelFilter::from_level(
+            log_level,
+        ))
         .init();
 
     match cli.command {
-        Commands::Check { action_type, target, ruleset } => {
+        Commands::Check {
+            action_type,
+            target,
+            ruleset,
+        } => {
             let engine = HushEngine::from_ruleset(&ruleset)
                 .map_err(|e| anyhow::anyhow!("Failed to load ruleset: {}", e))?;
             let context = GuardContext::new();
@@ -142,7 +148,14 @@ async fn main() -> anyhow::Result<()> {
 
             if result.valid {
                 println!("VALID: Receipt signature verified");
-                println!("  Verdict: {}", if signed.receipt.verdict.passed { "PASS" } else { "FAIL" });
+                println!(
+                    "  Verdict: {}",
+                    if signed.receipt.verdict.passed {
+                        "PASS"
+                    } else {
+                        "FAIL"
+                    }
+                );
             } else {
                 println!("INVALID: {}", result.errors.join(", "));
                 std::process::exit(1);

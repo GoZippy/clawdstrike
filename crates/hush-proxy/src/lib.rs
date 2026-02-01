@@ -4,8 +4,8 @@
 //! for implementing network egress controls.
 
 pub mod dns;
-pub mod sni;
-pub mod policy;
 pub mod error;
+pub mod policy;
+pub mod sni;
 
 pub use error::{Error, Result};

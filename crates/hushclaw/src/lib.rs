@@ -9,19 +9,18 @@
 //!
 //! Guards can be composed into rulesets and configured via YAML.
 
-pub mod guards;
-pub mod policy;
 pub mod engine;
 pub mod error;
+pub mod guards;
+pub mod policy;
 
-pub use guards::{
-    Guard, GuardContext, GuardResult, Severity,
-    ForbiddenPathGuard, EgressAllowlistGuard, SecretLeakGuard,
-    PatchIntegrityGuard, McpToolGuard,
-};
-pub use policy::{Policy, RuleSet};
 pub use engine::HushEngine;
 pub use error::{Error, Result};
+pub use guards::{
+    EgressAllowlistGuard, ForbiddenPathGuard, Guard, GuardContext, GuardResult, McpToolGuard,
+    PatchIntegrityGuard, SecretLeakGuard, Severity,
+};
+pub use policy::{Policy, RuleSet};
 
 /// Re-export core types
 pub mod core {
