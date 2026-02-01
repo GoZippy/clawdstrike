@@ -8,7 +8,8 @@
 //! - hush policy validate <file> - Validate a policy file
 //! - hush daemon start/stop/status/reload - Daemon management
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::generate;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use hush_core::{Keypair, SignedReceipt};
@@ -69,6 +70,13 @@ enum Commands {
     Daemon {
         #[command(subcommand)]
         command: DaemonCommands,
+    },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for (bash, zsh, fish, powershell, elvish)
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
     },
 }
 
@@ -353,6 +361,11 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         },
+
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "hush", &mut std::io::stdout());
+        }
     }
 
     Ok(())
