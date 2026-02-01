@@ -230,3 +230,35 @@ pub fn compute_merkle_root(leaf_hashes_json: &str) -> Result<String, JsError> {
 
     Ok(tree.root().to_hex_prefixed())
 }
+
+/// Generate a Merkle proof for a specific leaf index.
+///
+/// # Arguments
+/// * `leaf_hashes_json` - JSON array of hex-encoded leaf hashes
+/// * `leaf_index` - Index of the leaf to prove (0-based)
+///
+/// # Returns
+/// JSON-serialized MerkleProof
+#[wasm_bindgen]
+pub fn generate_merkle_proof(
+    leaf_hashes_json: &str,
+    leaf_index: usize,
+) -> Result<String, JsError> {
+    let hashes_hex: Vec<String> = serde_json::from_str(leaf_hashes_json)
+        .map_err(|e| JsError::new(&format!("Invalid JSON: {}", e)))?;
+
+    let hashes: Vec<Hash> = hashes_hex
+        .iter()
+        .map(|h| Hash::from_hex(h))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| JsError::new(&e.to_string()))?;
+
+    let tree = MerkleTree::from_hashes(hashes)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+
+    let proof = tree.inclusion_proof(leaf_index)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+
+    serde_json::to_string(&proof)
+        .map_err(|e| JsError::new(&format!("Serialization failed: {}", e)))
+}

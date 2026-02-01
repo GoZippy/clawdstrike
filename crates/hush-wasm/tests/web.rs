@@ -109,3 +109,56 @@ fn test_hash_receipt() {
     assert!(hash.starts_with("0x"));
     assert_eq!(hash.len(), 66);
 }
+
+#[wasm_bindgen_test]
+fn test_get_canonical_json() {
+    let receipt_json = r#"{
+        "version": "1.0.0",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "content_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "verdict": {"passed": true}
+    }"#;
+
+    let canonical = get_canonical_json(receipt_json);
+    assert!(canonical.is_ok());
+    let canonical = canonical.unwrap();
+
+    // Canonical JSON should be deterministic
+    let canonical2 = get_canonical_json(receipt_json).unwrap();
+    assert_eq!(canonical, canonical2);
+}
+
+// ============================================================================
+// Merkle Tree Tests
+// ============================================================================
+
+#[wasm_bindgen_test]
+fn test_compute_merkle_root() {
+    // Two leaf hashes
+    let leaves_json = r#"[
+        "0x0000000000000000000000000000000000000000000000000000000000000001",
+        "0x0000000000000000000000000000000000000000000000000000000000000002"
+    ]"#;
+
+    let result = compute_merkle_root(leaves_json);
+    assert!(result.is_ok());
+    let root = result.unwrap();
+    assert!(root.starts_with("0x"));
+    assert_eq!(root.len(), 66);
+}
+
+#[wasm_bindgen_test]
+fn test_compute_merkle_root_single_leaf() {
+    let leaves_json = r#"["0x0000000000000000000000000000000000000000000000000000000000000001"]"#;
+
+    let result = compute_merkle_root(leaves_json);
+    assert!(result.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_compute_merkle_root_empty_fails() {
+    let leaves_json = r#"[]"#;
+
+    let result = compute_merkle_root(leaves_json);
+    assert!(result.is_err());
+}
