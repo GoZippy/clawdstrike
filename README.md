@@ -1,15 +1,35 @@
-# Clawdstrike
+<p align="center">
+  <img src=".github/assets/clawdstrike-hero.png" alt="Clawdstrike" width="900" />
+</p>
 
-Security guards and attestation primitives for OpenClaw agents.
+<h1 align="center">Clawdstrike</h1>
+
+<p align="center">
+  Security guards and attestation primitives for OpenClaw agents.
+</p>
+
+<p align="center">
+  🔒 Tool-boundary enforcement • 🧾 Signed receipts • 🧩 OpenClaw plugin
+</p>
+
+<p align="center">
+  <a href="docs/src/getting-started/quick-start.md">Docs</a> •
+  <a href="packages/clawdstrike-openclaw/docs/getting-started.md">OpenClaw integration</a> •
+  <a href="examples">Examples</a>
+</p>
 
 ## Overview
 
-Clawdstrike provides runtime security enforcement for AI agents, including:
+Clawdstrike provides runtime security enforcement for OpenClaw agents, including:
 
-- **Security Guards** - Composable checks for file access, network egress, secret detection, patch validation, and tool invocation
-- **Policy Engine** - YAML-based configuration for guard behavior
-- **Cryptographic Attestation** - Ed25519 signing, Merkle trees, and receipt generation for verifiable execution
-- **Pre-configured Rulesets** - Ready-to-use security profiles for different environments
+- 🔒 **Security Guards** - Composable checks for file access, network egress, secret detection, patch validation, and tool invocation
+- 🧩 **Policy Engine** - YAML-based configuration for guard behavior
+- 🧾 **Cryptographic Attestation** - Ed25519 signing, Merkle trees, and receipt generation for verifiable execution
+- 🧰 **Pre-configured Rulesets** - Ready-to-use security profiles for different environments
+
+### OpenClaw Integration
+
+Clawdstrike ships an OpenClaw plugin in `packages/clawdstrike-openclaw` (published as `@clawdstrike/openclaw`). For setup and policy schema details, see `packages/clawdstrike-openclaw/docs/getting-started.md`.
 
 ## Threat model & limitations (explicit)
 
@@ -117,10 +137,6 @@ async fn main() {
 }
 ```
 
-### OpenClaw Integration
-
-Clawdstrike ships an OpenClaw plugin in `packages/clawdstrike-openclaw` (published as `@clawdstrike/openclaw`). For setup and policy schema details, see `packages/clawdstrike-openclaw/docs/getting-started.md`.
-
 ## Security Guards
 
 ### ForbiddenPathGuard
@@ -212,22 +228,22 @@ Pre-configured security profiles in `rulesets/`:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    HushEngine                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │ ForbiddenPath│  │   Egress   │  │ SecretLeak  │  │
-│  │    Guard     │  │  Allowlist │  │   Guard     │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │   Patch     │  │  MCP Tool   │  │  Prompt     │  │
-│  │ Integrity   │  │   Guard     │  │ Injection   │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-├─────────────────────────────────────────────────────┤
-│                 Policy (YAML)                       │
-├─────────────────────────────────────────────────────┤
-│               Receipt Signing                       │
-│  Ed25519 │ SHA-256/Keccak │ Merkle │ Canonical JSON │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                               HushEngine                                │
+│  ┌───────────────────┐   ┌───────────────────┐   ┌───────────────────┐  │
+│  │   ForbiddenPath   │   │      Egress       │   │    SecretLeak     │  │
+│  │       Guard       │   │     Allowlist     │   │       Guard       │  │
+│  └───────────────────┘   └───────────────────┘   └───────────────────┘  │
+│  ┌───────────────────┐   ┌───────────────────┐   ┌───────────────────┐  │
+│  │  Patch Integrity  │   │     MCP Tool      │   │      Prompt       │  │
+│  │       Guard       │   │       Guard       │   │     Injection     │  │
+│  └───────────────────┘   └───────────────────┘   └───────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────┤
+│                              Policy (YAML)                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                             Receipt Signing                             │
+│        Ed25519 │ SHA-256/Keccak │ Merkle │ Canonical JSON (JCS)         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Development
