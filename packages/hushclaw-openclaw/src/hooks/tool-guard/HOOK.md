@@ -9,6 +9,12 @@ metadata: {"openclaw":{"emoji":"🔒","events":["tool_result_persist"]}}
 This hook intercepts tool results before they're persisted to the agent transcript.
 It enforces security policies, redacts sensitive data, and blocks dangerous operations.
 
+## Enforcement boundary (important)
+
+This hook runs on `tool_result_persist` (post-action). It can block/redact what is persisted and record an audit trail, but it cannot undo side effects that already happened (e.g., a network request a tool already made).
+
+For preflight decisions, use the `policy_check` tool (and/or ensure your runtime consults hushclaw before executing tools).
+
 ## Features
 
 - **Policy Enforcement**: Evaluates each tool call against the loaded security policy

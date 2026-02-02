@@ -5,7 +5,7 @@ export function generateSecurityPrompt(policy: Policy): string {
 
   sections.push(`# Security Policy
 
-You are protected by hushclaw security enforcement. The following constraints apply:`);
+Your tool use is subject to hushclaw guardrails at the tool boundary (not an OS sandbox). The following constraints apply:`);
 
   // Network Access section
   sections.push(`
@@ -49,7 +49,7 @@ You have access to the \`policy_check\` tool. Use it BEFORE attempting:
 Example:
 \`\`\`
 policy_check({ action: "file_write", resource: "/etc/passwd" })
--> { allowed: false, reason: "Path is forbidden" }
+-> { allowed: false, denied: true, warn: false, guard: "forbidden_path", message: "Denied by forbidden_path: …" }
 \`\`\``);
 
   // Violation Handling section

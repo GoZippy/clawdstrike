@@ -34,6 +34,10 @@ We will keep you informed throughout the process and credit you in the release n
 
 Hushclaw implements defense-in-depth for AI agent execution:
 
+### Enforcement boundary (explicit)
+
+Hushclaw enforces policy at the **agent/tool boundary**. It is **not** an OS sandbox and does not intercept syscalls. Anything that bypasses your tool/runtime integration is out of scope for enforcement.
+
 ### Guards
 
 Six composable security guards provide runtime protection:
@@ -56,12 +60,19 @@ Cryptographic verification for agent execution:
 
 ### Daemon (hushd)
 
-Centralized policy enforcement:
+Centralized policy enforcement (experimental):
 
 - HTTP API with key-based authentication
 - SQLite-backed audit ledger
 - Server-Sent Events (SSE) for real-time monitoring
 - Policy hot-reload without restart
+
+`hushd` is currently **experimental/WIP** and should not be relied on as a hardened production enforcement boundary without additional review.
+
+### Security testing (ongoing)
+
+- CI enforces `fmt`/`clippy`/`test`, and validates docs code blocks.
+- Fuzzing for parser-critical surfaces (DNS/SNI parsing in `hush-proxy`) runs on a schedule via `.github/workflows/fuzz.yml`.
 
 ## Known Limitations (v0.1.0)
 

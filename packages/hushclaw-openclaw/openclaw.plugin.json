@@ -2,7 +2,7 @@
   "id": "hushclaw",
   "version": "0.1.0",
   "name": "HushClaw Security Plugin",
-  "description": "Multi-model security enforcement for OpenClaw agents. Provides policy-based access control, secret detection, and egress filtering.",
+  "description": "Tool-layer security guardrails for OpenClaw agents (policy_check preflight + post-action tool output blocking/redaction). Provides policy-based access control decisions, secret detection, and egress allowlist guidance.",
   "main": "./dist/index.js",
   "configSchema": {
     "type": "object",

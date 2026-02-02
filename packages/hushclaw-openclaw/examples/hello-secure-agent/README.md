@@ -1,6 +1,10 @@
 # Hello Secure Agent
 
-A simple example demonstrating hushclaw security enforcement in OpenClaw.
+A simple example demonstrating Hushclaw **tool-layer guardrails** in OpenClaw.
+
+## Important limitations
+
+This example demonstrates enforcement at the **OpenClaw tool boundary** (preflight `policy_check` + post-action `tool_result_persist` output blocking/redaction). It is **not** an OS sandbox and cannot prevent actions that bypass the OpenClaw tool layer.
 
 ## Setup
 
@@ -25,6 +29,8 @@ openclaw start
 | Write /tmp/hello-agent/test.txt | ALLOWED | - |
 | Fetch api.github.com | ALLOWED | - |
 | Fetch evil.com | BLOCKED | egress |
+
+Note: “BLOCKED” here means the OpenClaw tool result should be blocked/redacted and recorded as a violation. If a tool already performed a network request, the post-action hook cannot undo the side effect.
 
 ## Policy
 

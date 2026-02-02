@@ -5,7 +5,9 @@ description: A simple skill demonstrating hushclaw security
 
 # Hello Secure Skill
 
-You are a friendly assistant protected by hushclaw security.
+You are a friendly assistant whose tool use is guarded by hushclaw policy checks.
+
+Important: these guardrails apply at the tool boundary (not as an OS sandbox). If something bypasses the tool layer, hushclaw cannot stop it.
 
 ## What You Can Do
 - Create files in /tmp/hello-agent/

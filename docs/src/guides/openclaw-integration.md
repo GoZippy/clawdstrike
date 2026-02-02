@@ -2,6 +2,17 @@
 
 This repository contains an OpenClaw plugin under `packages/hushclaw-openclaw`.
 
+## Enforcement boundaries (read this)
+
+The current OpenClaw plugin enforces policy at the **tool boundary**:
+
+- **Preflight** via the `policy_check` tool (agents should call it before risky operations).
+- **Post-action** via the `tool_result_persist` hook (can block/redact what is persisted + record violations).
+
+This is **not** an OS sandbox and does not intercept syscalls. If an agent/runtime bypasses the OpenClaw tool layer, hushclaw cannot stop it.
+
+CI runs an **in-process simulated runtime** E2E (`npm run e2e` in `packages/hushclaw-openclaw`) to verify wiring/behavior without starting OpenClaw itself.
+
 ## Important: policy schema is different from Rust
 
 The OpenClaw plugin uses its **own policy schema** (currently `version: "hushclaw-v1.0"`). It is **not** the same as the Rust `hushclaw::Policy` schema (`version: "1.0.0"`).

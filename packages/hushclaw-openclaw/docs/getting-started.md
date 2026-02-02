@@ -1,6 +1,15 @@
 # Getting Started with Hushclaw for OpenClaw
 
-Hushclaw provides security enforcement for AI agents running in OpenClaw.
+Hushclaw provides **tool-layer guardrails** for AI agents running in OpenClaw.
+
+## What this plugin can (and cannot) enforce
+
+Hushclaw enforces policy at the **OpenClaw tool boundary**:
+
+- **Preflight**: agents can use `policy_check` before attempting risky operations.
+- **Post-action**: the `tool_result_persist` hook can block/redact tool outputs and record violations.
+
+This is **not** an OS sandbox. If an agent/runtime can access the filesystem/network without going through OpenClaw tools, Hushclaw cannot stop it.
 
 ## Installation
 
@@ -60,13 +69,13 @@ Add to your `openclaw.json`:
 openclaw start
 ```
 
-Your agent is now protected!
+Hushclaw is now configured for your OpenClaw runtime.
 
 ## Verify It Works
 
-Ask your agent: "Try to read ~/.ssh/id_rsa"
+Ask your agent: "Try to read ~/.ssh/id_rsa" (via whatever file-reading tool OpenClaw provides).
 
-Expected response: Operation blocked by `forbidden_path`.
+Expected behavior: the tool result should be blocked/redacted and you should see a message indicating the `forbidden_path` guard denied it.
 
 ## Using the CLI
 
@@ -112,13 +121,13 @@ Agents can use the `policy_check` tool to check permissions before attempting op
 
 ```
 policy_check({ action: "file_write", resource: "/etc/passwd" })
--> { allowed: false, reason: "Path is forbidden" }
+-> { allowed: false, denied: true, warn: false, guard: "forbidden_path", message: "Denied by forbidden_path: …" }
 ```
 
 The tool provides:
 - `allowed`: Whether the action is permitted
 - `denied`: Whether the action is blocked
-- `reason`: Human-readable explanation
+- `reason` / `message`: Human-readable explanation
 - `guard`: Which guard made the decision
 - `suggestion`: Helpful alternative approaches
 
@@ -136,6 +145,8 @@ egress:
     - "*.onion"
     - "localhost"
 ```
+
+Note: egress policy is enforced at the tool boundary. If a network request is already executed by a tool, the post-action hook cannot undo the side effect; it can only block/redact persistence of the result.
 
 ### Filesystem Protection
 
