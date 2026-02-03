@@ -14,7 +14,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 
 ### How to Report
 
-1. Email: [security@clawdstrike.dev](mailto:security@clawdstrike.dev)
+1. Email: [connor@backbay.io](mailto:connor@backbay.io)
 2. Include:
    - Description of the vulnerability
    - Steps to reproduce
@@ -78,12 +78,12 @@ Centralized policy enforcement (experimental):
 
 The following security features have limited or no support in v0.1.0:
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Rate limiting | Implemented | Per-IP token bucket with trusted proxy support |
-| TPM integration | Planned | Hardware key storage not supported |
-| Audit log encryption | Planned | Logs stored in plaintext SQLite |
-| Network isolation | Partial | Relies on policy, no kernel enforcement |
+| Feature              | Status      | Notes                                          |
+| -------------------- | ----------- | ---------------------------------------------- |
+| Rate limiting        | Implemented | Per-IP token bucket with trusted proxy support |
+| TPM integration      | Planned     | Hardware key storage not supported             |
+| Audit log encryption | Planned     | Logs stored in plaintext SQLite                |
+| Network isolation    | Partial     | Relies on policy, no kernel enforcement        |
 
 ### Rate Limiting Security Note
 
