@@ -15,7 +15,7 @@
     The claw strikes back.<br/>
     At the boundary between intent and action,<br/>
     it watches what leaves, what changes, what leaks.<br/>
-    If the rules drift, it fails closed.<br/>
+    Not “visibility.” Not “AI.” Just enforcement.<br/>
     If the tale diverges, the receipt won’t sign.
   </em>
 </p>
