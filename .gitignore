@@ -33,3 +33,5 @@ docs/book
 
 # macOS
 .DS_Store
+
+.env
