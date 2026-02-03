@@ -12,6 +12,12 @@
 //! - `hush policy show` - Show current policy
 //! - `hush policy validate <file>` - Validate a policy file
 //! - `hush policy diff <left> <right>` - Diff two policies (rulesets or files)
+//! - `hush policy eval <policyRef> <eventPath|->` - Evaluate a PolicyEvent JSON against a policy
+//! - `hush policy simulate <policyRef> <eventsJsonlPath|->` - Evaluate a JSONL stream of PolicyEvents
+//! - `hush policy lint <policyRef>` - Lint a policy (warnings)
+//! - `hush policy test <testYaml>` - Run policy tests from YAML
+//! - `hush policy impact <old> <new> <eventsJsonlPath|->` - Compare decisions across policies
+//! - `hush policy version <policyRef>` - Show policy schema version compatibility
 //! - `hush daemon start|stop|status|reload` - Daemon management
 
 use clap::{CommandFactory, Parser, Subcommand};
@@ -25,7 +31,16 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use clawdstrike::{GuardContext, GuardResult, HushEngine, Policy, RuleSet, Severity};
 use hush_core::{keccak256, sha256, Hash, Keypair, MerkleProof, MerkleTree, SignedReceipt};
 
+mod canonical_commandline;
+mod guard_report_json;
 mod policy_diff;
+mod policy_event;
+mod policy_impact;
+mod policy_lint;
+mod policy_pac;
+mod policy_rego;
+mod policy_test;
+mod policy_version;
 
 const CLI_JSON_VERSION: u8 = 1;
 
@@ -241,6 +256,132 @@ enum PolicyCommands {
 
     /// List available rulesets
     List,
+
+    /// Lint a policy for common issues and risky defaults
+    Lint {
+        /// Policy reference (ruleset name or file path)
+        policy_ref: String,
+        /// Resolve extends before linting
+        #[arg(long)]
+        resolve: bool,
+        /// Treat warnings as errors
+        #[arg(long)]
+        strict: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Run a policy test suite (YAML)
+    Test {
+        /// Path to a policy test YAML file
+        test_file: String,
+        /// Resolve extends in the referenced policy
+        #[arg(long)]
+        resolve: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+        /// Emit guard coverage counts
+        #[arg(long)]
+        coverage: bool,
+    },
+
+    /// Impact analysis: compare two policies over a stream of PolicyEvents
+    Impact {
+        /// Old policy (ruleset id or file path)
+        old_policy: String,
+        /// New policy (ruleset id or file path)
+        new_policy: String,
+        /// Path to PolicyEvent JSONL (use - for stdin)
+        events: String,
+        /// Resolve extends before evaluation
+        #[arg(long)]
+        resolve: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+        /// Exit non-zero if any allow->block transitions are observed
+        #[arg(long)]
+        fail_on_breaking: bool,
+    },
+
+    /// Show policy schema version compatibility
+    Version {
+        /// Policy reference (ruleset name or file path)
+        policy_ref: String,
+        /// Resolve extends before printing version info
+        #[arg(long)]
+        resolve: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Rego/OPA policy tooling (not yet implemented)
+    Rego {
+        #[command(subcommand)]
+        command: RegoCommands,
+    },
+
+    /// Evaluate a canonical PolicyEvent JSON against a policy
+    Eval {
+        /// Policy reference (ruleset name or file path)
+        policy_ref: String,
+        /// Path to PolicyEvent JSON (use - for stdin)
+        event: String,
+        /// Resolve extends before evaluation
+        #[arg(long)]
+        resolve: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Simulate canonical PolicyEvent JSONL against a policy
+    Simulate {
+        /// Policy reference (ruleset name or file path)
+        policy_ref: String,
+        /// Path to PolicyEvent JSONL (use - for stdin). If omitted and stdin is a TTY, runs interactively.
+        events: Option<String>,
+        /// Resolve extends before evaluation
+        #[arg(long)]
+        resolve: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long, conflicts_with = "jsonl")]
+        json: bool,
+        /// Emit one JSON object per event (JSONL).
+        #[arg(long, conflicts_with = "json")]
+        jsonl: bool,
+        /// Only emit the summary (JSON output uses an empty `results` array).
+        #[arg(long)]
+        summary: bool,
+        /// Exit non-zero if any event is blocked.
+        #[arg(long)]
+        fail_on_deny: bool,
+        /// Do not fail the command if any event is blocked.
+        #[arg(long, conflicts_with = "fail_on_deny")]
+        no_fail_on_deny: bool,
+        /// Print throughput/latency metrics to stderr.
+        #[arg(long)]
+        benchmark: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum RegoCommands {
+    /// Compile a .rego policy into a bundle (stub)
+    Compile {
+        /// Path to .rego file
+        file: String,
+    },
+    /// Evaluate a .rego policy against an input JSON (stub)
+    Eval {
+        /// Path to .rego file
+        file: String,
+        /// Input JSON path (use - for stdin)
+        input: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -413,7 +554,7 @@ async fn run(cli: Cli, stdout: &mut dyn Write, stderr: &mut dyn Write) -> ExitCo
             }
         },
 
-        Commands::Policy { command } => match cmd_policy(command, stdout, stderr) {
+        Commands::Policy { command } => match cmd_policy(command, stdout, stderr).await {
             Ok(code) => code,
             Err(e) => {
                 let _ = writeln!(stderr, "Error: {}", e);
@@ -908,7 +1049,7 @@ fn cmd_keygen(output: &str) -> anyhow::Result<(String, String, String)> {
     Ok((output.to_string(), public_path, public_hex))
 }
 
-fn cmd_policy(
+async fn cmd_policy(
     command: PolicyCommands,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
@@ -979,7 +1120,11 @@ fn cmd_policy(
                 Ok(v) => v,
                 Err(e) => {
                     let code = policy_error_exit_code(&e.source);
-                    let _ = writeln!(stderr, "Error loading right policy {right:?}: {}", e.message);
+                    let _ = writeln!(
+                        stderr,
+                        "Error loading right policy {right:?}: {}",
+                        e.message
+                    );
                     return Ok(code);
                 }
             };
@@ -1047,7 +1192,11 @@ fn cmd_policy(
             );
 
             for d in diffs {
-                let path = if d.path.is_empty() { "/" } else { d.path.as_str() };
+                let path = if d.path.is_empty() {
+                    "/"
+                } else {
+                    d.path.as_str()
+                };
                 match d.kind {
                     policy_diff::DiffKind::Added => {
                         let new = d
@@ -1094,6 +1243,92 @@ fn cmd_policy(
             }
             Ok(ExitCode::Ok)
         }
+
+        PolicyCommands::Lint {
+            policy_ref,
+            resolve,
+            strict,
+            json,
+        } => Ok(policy_lint::cmd_policy_lint(
+            policy_ref, resolve, json, strict, stdout, stderr,
+        )),
+
+        PolicyCommands::Test {
+            test_file,
+            resolve,
+            json,
+            coverage,
+        } => Ok(
+            policy_test::cmd_policy_test(test_file, resolve, json, coverage, stdout, stderr).await,
+        ),
+
+        PolicyCommands::Impact {
+            old_policy,
+            new_policy,
+            events,
+            resolve,
+            json,
+            fail_on_breaking,
+        } => Ok(policy_impact::cmd_policy_impact(
+            old_policy,
+            new_policy,
+            events,
+            policy_impact::PolicyImpactOptions {
+                resolve,
+                json,
+                fail_on_breaking,
+            },
+            stdout,
+            stderr,
+        )
+        .await),
+
+        PolicyCommands::Version {
+            policy_ref,
+            resolve,
+            json,
+        } => Ok(policy_version::cmd_policy_version(
+            policy_ref, resolve, json, stdout, stderr,
+        )),
+
+        PolicyCommands::Rego { command } => {
+            Ok(policy_rego::cmd_policy_rego(command, stdout, stderr))
+        }
+
+        PolicyCommands::Eval {
+            policy_ref,
+            event,
+            resolve,
+            json,
+        } => {
+            Ok(policy_pac::cmd_policy_eval(policy_ref, event, resolve, json, stdout, stderr).await)
+        }
+
+        PolicyCommands::Simulate {
+            policy_ref,
+            events,
+            resolve,
+            json,
+            jsonl,
+            summary,
+            fail_on_deny,
+            no_fail_on_deny,
+            benchmark,
+        } => Ok(policy_pac::cmd_policy_simulate(
+            policy_ref,
+            events,
+            policy_pac::PolicySimulateOptions {
+                resolve,
+                json,
+                jsonl,
+                summary,
+                fail_on_deny: fail_on_deny || !no_fail_on_deny,
+                benchmark,
+            },
+            stdout,
+            stderr,
+        )
+        .await),
     }
 }
 
