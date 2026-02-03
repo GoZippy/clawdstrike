@@ -1,5 +1,14 @@
 import { createSecurityContext } from '@clawdstrike/adapter-core';
-import type { SecurityContext, ToolInterceptor } from '@clawdstrike/adapter-core';
+import type {
+  AdapterConfig,
+  Decision,
+  PolicyEngineLike,
+  SecurityContext,
+  ToolInterceptor,
+} from '@clawdstrike/adapter-core';
+
+import { ClawdstrikeViolationError } from './errors.js';
+import { createLangChainInterceptor } from './interceptor.js';
 
 type LangChainInvokeLike<TInput = unknown, TOutput = unknown> = {
   invoke: (input: TInput, config?: unknown) => Promise<TOutput> | TOutput;
@@ -13,30 +22,89 @@ type LangChainToolLike = Partial<LangChainInvokeLike> & Partial<LangChainCallLik
   name?: string;
 };
 
+export interface WrapToolOptions {
+  context?: SecurityContext;
+  getContext?: (toolName: string, input: unknown) => SecurityContext;
+}
+
 export function wrapTool<TTool extends LangChainToolLike>(
   tool: TTool,
   interceptor: ToolInterceptor,
+  options?: WrapToolOptions,
 ): TTool {
-  const context = createSecurityContext({
-    metadata: { framework: 'langchain' },
-  });
-  return wrapToolWithContext(tool, interceptor, context);
+  const context =
+    options?.context ??
+    createSecurityContext({
+      metadata: { framework: 'langchain' },
+    });
+  return wrapToolWithContext(tool, interceptor, context, options?.getContext);
 }
 
 export function wrapTools<TTool extends LangChainToolLike>(
   tools: readonly TTool[],
   interceptor: ToolInterceptor,
+  options?: WrapToolOptions,
 ): TTool[] {
-  const context = createSecurityContext({
-    metadata: { framework: 'langchain' },
+  const context =
+    options?.context ??
+    createSecurityContext({
+      metadata: { framework: 'langchain' },
+    });
+  return tools.map(tool => wrapToolWithContext(tool, interceptor, context, options?.getContext));
+}
+
+export function wrapToolWithConfig<TTool extends LangChainToolLike>(
+  tool: TTool,
+  engine: PolicyEngineLike,
+  config: AdapterConfig = {},
+  options?: WrapToolOptions,
+): TTool {
+  const interceptor = createLangChainInterceptor(engine, config);
+  const context =
+    options?.context ??
+    createSecurityContext({
+      metadata: { framework: 'langchain' },
+    });
+
+  return wrapToolWithContext(tool, interceptor, context, options?.getContext, {
+    engine,
+    config,
+    options,
   });
-  return tools.map(tool => wrapToolWithContext(tool, interceptor, context));
+}
+
+export function wrapToolsWithConfig<TTool extends LangChainToolLike>(
+  tools: readonly TTool[],
+  engine: PolicyEngineLike,
+  config: AdapterConfig = {},
+  options?: WrapToolOptions,
+): TTool[] {
+  const interceptor = createLangChainInterceptor(engine, config);
+  const context =
+    options?.context ??
+    createSecurityContext({
+      metadata: { framework: 'langchain' },
+    });
+
+  return tools.map(tool =>
+    wrapToolWithContext(tool, interceptor, context, options?.getContext, {
+      engine,
+      config,
+      options,
+    }),
+  );
 }
 
 function wrapToolWithContext<TTool extends LangChainToolLike>(
   tool: TTool,
   interceptor: ToolInterceptor,
   context: SecurityContext,
+  getContext?: (toolName: string, input: unknown) => SecurityContext,
+  withConfigSupport?: {
+    engine: PolicyEngineLike;
+    config: AdapterConfig;
+    options?: WrapToolOptions;
+  },
 ): TTool {
   const toolName = typeof tool.name === 'string' && tool.name.length > 0 ? tool.name : 'tool';
   const hasInvoke = typeof tool.invoke === 'function';
@@ -49,26 +117,38 @@ function wrapToolWithContext<TTool extends LangChainToolLike>(
   const originalInvoke = hasInvoke ? tool.invoke!.bind(tool) : undefined;
   const originalCall = hasCall ? tool._call!.bind(tool) : undefined;
 
+  let lastDecision: Decision | null = null;
+
   const wrappedInvoke = hasInvoke
-    ? async (input: unknown, config?: unknown) =>
-        runIntercepted(
+    ? async (input: unknown, config?: unknown) => {
+        const resolvedContext = getContext ? getContext(toolName, input) : context;
+        return runIntercepted(
           toolName,
           interceptor,
-          context,
+          resolvedContext,
           input,
+          decision => {
+            lastDecision = decision;
+          },
           (nextInput: unknown) => originalInvoke!(nextInput, config),
-        )
+        );
+      }
     : undefined;
 
   const wrappedCall = hasCall
-    ? async (input: unknown, ...rest: unknown[]) =>
-        runIntercepted(
+    ? async (input: unknown, ...rest: unknown[]) => {
+        const resolvedContext = getContext ? getContext(toolName, input) : context;
+        return runIntercepted(
           toolName,
           interceptor,
-          context,
+          resolvedContext,
           input,
+          decision => {
+            lastDecision = decision;
+          },
           (nextInput: unknown) => originalCall!(nextInput, ...rest),
-        )
+        );
+      }
     : undefined;
 
   return new Proxy(tool, {
@@ -78,6 +158,18 @@ function wrapToolWithContext<TTool extends LangChainToolLike>(
       }
       if (prop === '_call' && wrappedCall) {
         return wrappedCall;
+      }
+      if (prop === 'getLastDecision') {
+        return () => lastDecision;
+      }
+      if (prop === 'withConfig' && withConfigSupport) {
+        return (overrides: Partial<AdapterConfig>) =>
+          wrapToolWithConfig(
+            tool,
+            withConfigSupport.engine,
+            { ...withConfigSupport.config, ...overrides },
+            withConfigSupport.options,
+          );
       }
 
       const value = Reflect.get(target, prop, receiver) as unknown;
@@ -94,6 +186,7 @@ async function runIntercepted<TOutput>(
   interceptor: ToolInterceptor,
   context: SecurityContext,
   input: unknown,
+  onDecision: (decision: Decision) => void,
   invoke: (nextInput: unknown) => Promise<TOutput> | TOutput,
 ): Promise<TOutput> {
   let interceptResult;
@@ -105,10 +198,11 @@ async function runIntercepted<TOutput>(
     throw err;
   }
 
+  onDecision(interceptResult.decision);
+
   if (!interceptResult.proceed) {
     const { decision } = interceptResult;
-    const detail = decision.message ?? decision.reason ?? 'denied';
-    throw new Error(`Tool '${toolName}' blocked: ${detail}`);
+    throw new ClawdstrikeViolationError(toolName, decision);
   }
 
   const nextInput = interceptResult.modifiedParameters ?? input;
@@ -133,4 +227,3 @@ async function runIntercepted<TOutput>(
     throw err;
   }
 }
-

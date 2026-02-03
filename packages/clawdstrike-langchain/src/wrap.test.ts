@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { BaseToolInterceptor } from '@clawdstrike/adapter-core';
 import type { PolicyEngineLike, ToolInterceptor } from '@clawdstrike/adapter-core';
 
-import { wrapTool, wrapTools } from './wrap.js';
+import { ClawdstrikeViolationError } from './errors.js';
+import { wrapTool, wrapToolWithConfig, wrapTools } from './wrap.js';
 
 describe('wrapTool', () => {
   it('wraps invoke() and allows execution when policy allows', async () => {
@@ -39,7 +40,9 @@ describe('wrapTool', () => {
     };
 
     const secureTool = wrapTool(tool, interceptor);
-    await expect(secureTool._call({ cmd: 'rm -rf /' })).rejects.toThrow(/blocked/i);
+    await expect(secureTool._call({ cmd: 'rm -rf /' })).rejects.toBeInstanceOf(
+      ClawdstrikeViolationError,
+    );
     expect(tool._call).toHaveBeenCalledTimes(0);
   });
 
@@ -84,3 +87,28 @@ describe('wrapTools', () => {
   });
 });
 
+describe('wrapToolWithConfig', () => {
+  it('supports withConfig override when created from engine+config', async () => {
+    const engine: PolicyEngineLike = {
+      evaluate: event => ({
+        allowed: event.eventType !== 'command_exec',
+        denied: event.eventType === 'command_exec',
+        warn: false,
+      }),
+    };
+
+    const tool = {
+      name: 'bash',
+      _call: vi.fn(async () => 'ok'),
+    };
+
+    const secureTool = wrapToolWithConfig(tool, engine, { blockOnViolation: false });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const secureTool2 = (secureTool as any).withConfig({ blockOnViolation: true });
+
+    await expect(secureTool._call({ cmd: 'rm -rf /' })).resolves.toBe('ok');
+    await expect(secureTool2._call({ cmd: 'rm -rf /' })).rejects.toBeInstanceOf(
+      ClawdstrikeViolationError,
+    );
+  });
+});
