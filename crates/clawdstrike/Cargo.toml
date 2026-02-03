@@ -26,6 +26,9 @@ chrono.workspace = true
 globset.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 unicode-normalization = "0.1"
+base64.workspace = true
+reqwest = { workspace = true, optional = true }
+hex.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
@@ -35,6 +38,7 @@ tempfile = "3.24"
 
 [features]
 default = []
+llm-judge-openai = ["reqwest"]
 
 [lints]
 workspace = true

@@ -338,13 +338,16 @@ name = "clawdstrike"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64",
  "chrono",
  "glob",
  "globset",
+ "hex",
  "hush-core",
  "hush-proxy",
  "proptest",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",
