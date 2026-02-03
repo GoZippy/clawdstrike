@@ -1505,7 +1505,37 @@ mod policy_pac_contract {
         ] {
             assert!(decision.get(key).is_some(), "missing decision.{key}");
         }
-        assert!(v.get("report").is_some(), "missing report");
+        let report = v.get("report").expect("missing report");
+        let report_obj = report.as_object().expect("report must be object");
+        let report_keys: std::collections::BTreeSet<&str> =
+            report_obj.keys().map(|k| k.as_str()).collect();
+        assert_eq!(
+            report_keys,
+            std::collections::BTreeSet::from(["overall", "per_guard"]),
+            "report keys must be stable"
+        );
+
+        let overall = report.get("overall").expect("report.overall");
+        let overall_obj = overall.as_object().expect("report.overall must be object");
+        let allowed_overall_keys: std::collections::BTreeSet<&str> =
+            std::collections::BTreeSet::from([
+                "allowed", "guard", "severity", "message", "details",
+            ]);
+        for k in overall_obj.keys() {
+            assert!(
+                allowed_overall_keys.contains(k.as_str()),
+                "unexpected report.overall field {k}"
+            );
+        }
+        for required in ["allowed", "guard", "severity", "message"] {
+            assert!(
+                overall.get(required).is_some(),
+                "missing report.overall.{required}"
+            );
+        }
+
+        let per_guard = report.get("per_guard").expect("report.per_guard");
+        assert!(per_guard.is_array(), "report.per_guard must be array");
     }
 
     #[tokio::test]
@@ -1765,6 +1795,38 @@ suites:
         assert!(
             v.get("coverage").is_some(),
             "expected coverage when enabled"
+        );
+    }
+}
+
+#[cfg(test)]
+mod canonical_commandline_contract {
+    use crate::canonical_commandline::{canonical_shell_commandline, canonical_shell_word};
+
+    #[test]
+    fn canonical_shell_word_leaves_safe_set_unquoted() {
+        assert_eq!(
+            canonical_shell_word("abcXYZ0123_@%+=:,./-"),
+            "abcXYZ0123_@%+=:,./-"
+        );
+    }
+
+    #[test]
+    fn canonical_shell_word_quotes_spaces() {
+        assert_eq!(canonical_shell_word("hello world"), "'hello world'");
+    }
+
+    #[test]
+    fn canonical_shell_word_escapes_single_quotes() {
+        assert_eq!(canonical_shell_word("a'b"), "'a'\"'\"'b'");
+    }
+
+    #[test]
+    fn canonical_shell_commandline_joins_tokens() {
+        let args = vec!["hi".to_string(), "there world".to_string()];
+        assert_eq!(
+            canonical_shell_commandline("echo", &args),
+            "echo hi 'there world'"
         );
     }
 }

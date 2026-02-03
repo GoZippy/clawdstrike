@@ -4,6 +4,7 @@ use std::time::Instant;
 use anyhow::Context as _;
 use clawdstrike::{GuardReport, GuardResult, HushEngine, Severity};
 
+use crate::guard_report_json::GuardReportJson;
 use crate::policy_event::{map_policy_event, PolicyEvent};
 use crate::{CliJsonError, ExitCode, PolicySource, CLI_JSON_VERSION};
 
@@ -37,7 +38,7 @@ pub struct PolicyEvalJsonOutput {
     pub outcome: &'static str,
     pub exit_code: i32,
     pub decision: DecisionJson,
-    pub report: GuardReport,
+    pub report: GuardReportJson,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<CliJsonError>,
 }
@@ -62,7 +63,7 @@ pub struct SimulationResultEntry {
     pub event_id: String,
     pub outcome: &'static str,
     pub decision: DecisionJson,
-    pub report: GuardReport,
+    pub report: GuardReportJson,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -147,11 +148,8 @@ fn outcome_and_exit_code(report: &GuardReport) -> (&'static str, ExitCode) {
     ("allowed", ExitCode::Ok)
 }
 
-fn synthetic_error_report(message: &str) -> GuardReport {
-    GuardReport {
-        overall: GuardResult::block("engine", Severity::Error, message),
-        per_guard: Vec::new(),
-    }
+fn synthetic_error_report_json(message: &str) -> GuardReportJson {
+    GuardReportJson::synthetic_error(message)
 }
 
 pub async fn cmd_policy_eval(
@@ -276,6 +274,7 @@ pub async fn cmd_policy_eval(
     let (outcome, code) = outcome_and_exit_code(&report);
 
     if json {
+        let report = GuardReportJson::from_report(&report);
         let output = PolicyEvalJsonOutput {
             version: CLI_JSON_VERSION,
             command: "policy_eval",
@@ -492,24 +491,23 @@ pub async fn cmd_policy_simulate(
             _ => {}
         }
 
-        let entry = SimulationResultEntry {
-            event_id: event.event_id.clone(),
-            outcome,
-            decision,
-            report,
-        };
+        if opts.jsonl || (opts.json && !opts.summary) {
+            let entry = SimulationResultEntry {
+                event_id: event.event_id.clone(),
+                outcome,
+                decision,
+                report: GuardReportJson::from_report(&report),
+            };
 
-        if opts.jsonl {
-            let _ = writeln!(
-                stdout,
-                "{}",
-                serde_json::to_string(&entry).unwrap_or_else(|_| "{}".to_string())
-            );
-            continue;
-        }
-
-        if !opts.summary {
-            results.push(entry);
+            if opts.jsonl {
+                let _ = writeln!(
+                    stdout,
+                    "{}",
+                    serde_json::to_string(&entry).unwrap_or_else(|_| "{}".to_string())
+                );
+            } else {
+                results.push(entry);
+            }
         }
     }
 
@@ -854,7 +852,7 @@ fn emit_policy_eval_error(
     stderr: &mut dyn Write,
 ) -> ExitCode {
     if json {
-        let report = synthetic_error_report(message);
+        let report = synthetic_error_report_json(message);
         let decision = DecisionJson {
             allowed: false,
             denied: false,

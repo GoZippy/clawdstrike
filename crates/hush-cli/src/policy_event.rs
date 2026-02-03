@@ -5,6 +5,8 @@ use clawdstrike::guards::GuardAction;
 use clawdstrike::GuardContext;
 use serde::{Deserialize, Serialize};
 
+use crate::canonical_commandline::canonical_shell_commandline;
+
 pub enum PolicyEventType {
     FileRead,
     FileWrite,
@@ -483,7 +485,7 @@ pub fn map_policy_event(event: &PolicyEvent) -> anyhow::Result<MappedPolicyEvent
         ),
         (PolicyEventType::CommandExec, PolicyEventData::Command(cmd)) => (
             MappedGuardAction::ShellCommand {
-                commandline: shell_join_posix(&cmd.command, &cmd.args),
+                commandline: canonical_shell_commandline(&cmd.command, &cmd.args),
             },
             None,
         ),
@@ -539,58 +541,5 @@ pub fn map_policy_event(event: &PolicyEvent) -> anyhow::Result<MappedPolicyEvent
         context,
         action,
         decision_reason,
-    })
-}
-
-fn shell_join_posix(command: &str, args: &[String]) -> String {
-    let mut out = shell_quote_posix(command);
-    for arg in args {
-        out.push(' ');
-        out.push_str(&shell_quote_posix(arg));
-    }
-    out
-}
-
-fn shell_quote_posix(s: &str) -> String {
-    if s.is_empty() {
-        return "''".to_string();
-    }
-
-    if is_safe_shell_word(s) {
-        return s.to_string();
-    }
-
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-
-    for part in s.split('\'') {
-        out.push_str(part);
-        out.push_str("'\"'\"'");
-    }
-
-    // Remove the trailing escaped-quote sequence we added after the final segment.
-    out.truncate(out.len().saturating_sub("'\"'\"'".len()));
-    out.push('\'');
-    out
-}
-
-fn is_safe_shell_word(s: &str) -> bool {
-    s.bytes().all(|b| {
-        matches!(
-            b,
-            b'a'..=b'z'
-                | b'A'..=b'Z'
-                | b'0'..=b'9'
-                | b'_'
-                | b'-'
-                | b'.'
-                | b'/'
-                | b':'
-                | b'@'
-                | b'%'
-                | b'+'
-                | b'='
-                | b','
-        )
     })
 }

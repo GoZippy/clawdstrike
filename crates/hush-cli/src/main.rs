@@ -31,6 +31,8 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use clawdstrike::{GuardContext, GuardResult, HushEngine, Policy, RuleSet, Severity};
 use hush_core::{keccak256, sha256, Hash, Keypair, MerkleProof, MerkleTree, SignedReceipt};
 
+mod canonical_commandline;
+mod guard_report_json;
 mod policy_diff;
 mod policy_event;
 mod policy_impact;
