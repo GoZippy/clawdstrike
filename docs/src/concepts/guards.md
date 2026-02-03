@@ -23,7 +23,9 @@ Guards operate on `GuardAction`:
 - `FileWrite(path, bytes)`
 - `Patch(path, diff)`
 - `NetworkEgress(host, port)`
+- `ShellCommand(command)`
 - `McpTool(tool_name, args_json)`
+- `Custom(kind, payload_json)` (used for things like `untrusted_text` scanning)
 
 ## Built-in guards
 
@@ -34,5 +36,6 @@ Clawdstrike ships with:
 - `SecretLeakGuard`
 - `PatchIntegrityGuard`
 - `McpToolGuard`
+- `PromptInjectionGuard`
 
 See the [Guards reference](../reference/guards/README.md) for configs and details.

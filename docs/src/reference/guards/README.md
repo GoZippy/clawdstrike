@@ -1,6 +1,6 @@
 # Guards Reference
 
-Clawdstrike ships with five built-in guards. Guards evaluate a `GuardAction` plus `GuardContext` and return a `GuardResult`.
+Clawdstrike ships with six built-in guards. Guards evaluate a `GuardAction` plus `GuardContext` and return a `GuardResult`.
 
 ## Built-in guards
 
@@ -15,13 +15,14 @@ Clawdstrike ships with five built-in guards. Guards evaluate a `GuardAction` plu
 
 ## Action coverage
 
-| Guard | FileAccess | FileWrite | Patch | NetworkEgress | McpTool |
-|------|------------|-----------|-------|---------------|---------|
-| ForbiddenPath | ✓ | ✓ | ✓ | | |
-| EgressAllowlist | | | | ✓ | |
-| SecretLeak | | ✓ | ✓ | | |
-| PatchIntegrity | | | ✓ | | |
-| McpTool | | | | | ✓ |
+| Guard | FileAccess | FileWrite | Patch | NetworkEgress | McpTool | Custom (untrusted_text) |
+|------|------------|-----------|-------|---------------|---------|-------------------------|
+| ForbiddenPath | ✓ | ✓ | ✓ | | | |
+| EgressAllowlist | | | | ✓ | | |
+| SecretLeak | | ✓ | ✓ | | | |
+| PatchIntegrity | | | ✓ | | | |
+| McpTool | | | | | ✓ | |
+| PromptInjection | | | | | | ✓ |
 
 PromptInjectionGuard handles only `GuardAction::Custom("untrusted_text", ...)`.
 
