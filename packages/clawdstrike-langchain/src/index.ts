@@ -9,6 +9,6 @@ export type { ClawdstrikeCallbackHandlerOptions } from './callback-handler.js';
 export { ClawdstrikeCallbackHandler } from './callback-handler.js';
 
 export type { SecurityCheckpointNode, SecurityCheckpointOptions } from './langgraph.js';
-export { createSecurityCheckpoint, wrapToolNode } from './langgraph.js';
+export { addSecurityRouting, createSecurityCheckpoint, sanitizeState, wrapToolNode } from './langgraph.js';
 
 export { LangChainAdapter } from './langchain-adapter.js';

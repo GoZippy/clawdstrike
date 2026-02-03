@@ -1,5 +1,11 @@
 import { createSecurityContext } from '@clawdstrike/adapter-core';
-import type { AdapterConfig, Decision, PolicyEngineLike, SecurityContext, ToolInterceptor } from '@clawdstrike/adapter-core';
+import type {
+  AdapterConfig,
+  Decision,
+  PolicyEngineLike,
+  SecurityContext,
+  ToolInterceptor,
+} from '@clawdstrike/adapter-core';
 
 import { createLangChainInterceptor } from './interceptor.js';
 
@@ -86,6 +92,10 @@ export function wrapToolNode<S extends Record<string, unknown>>(
   graph: { nodes: Map<string, (state: S) => Promise<S> | S>; addNode: (name: string, node: (state: S) => Promise<S> | S) => void },
   nodeName: string,
   checkpoint: SecurityCheckpointNode,
+  options?: {
+    engine?: PolicyEngineLike;
+    sanitize?: boolean;
+  },
 ): void {
   const original = graph.nodes.get(nodeName);
   if (!original) {
@@ -102,8 +112,61 @@ export function wrapToolNode<S extends Record<string, unknown>>(
       } as S;
     }
 
-    return await original(state);
+    const nextState = await original(state);
+
+    if (options?.sanitize === false) {
+      return nextState;
+    }
+
+    const engine = options?.engine;
+    if (!engine?.redactSecrets) {
+      return nextState;
+    }
+
+    return sanitizeState(nextState, engine) as S;
   });
+}
+
+export function sanitizeState(value: unknown, engine: PolicyEngineLike): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    return engine.redactSecrets ? engine.redactSecrets(value) : value;
+  }
+
+  if (typeof value !== 'object') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => sanitizeState(item, engine));
+  }
+
+  const rec = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(rec)) {
+    out[k] = sanitizeState(v, engine);
+  }
+  return out;
+}
+
+export function addSecurityRouting<S extends Record<string, unknown>>(
+  graph: { addConditionalEdges?: (from: string, condition: (state: S) => Promise<string> | string, mapping: Record<string, string>) => void },
+  fromNode: string,
+  checkpoint: SecurityCheckpointNode,
+  mapping: { allow: string; block: string; warn: string },
+): void {
+  if (typeof graph.addConditionalEdges !== 'function') {
+    throw new Error('Graph does not support addConditionalEdges');
+  }
+
+  graph.addConditionalEdges(
+    fromNode,
+    async (state: S) => checkpoint.route(state as Record<string, unknown>),
+    mapping,
+  );
 }
 
 function defaultExtractToolCalls(state: Record<string, unknown>): PendingToolCall[] {
@@ -126,4 +189,3 @@ function defaultExtractToolCalls(state: Record<string, unknown>): PendingToolCal
   }
   return calls;
 }
-
