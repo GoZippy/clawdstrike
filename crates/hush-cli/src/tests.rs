@@ -1664,3 +1664,78 @@ mod policy_pac_contract {
         assert_eq!(v.get("summary").and_then(|v| v.get("blocked")).and_then(|v| v.as_i64()), Some(1));
     }
 }
+
+#[cfg(test)]
+mod policy_test_runner_contract {
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use crate::policy_test::cmd_policy_test;
+    use crate::ExitCode;
+
+    fn temp_path(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        std::env::temp_dir().join(format!("hush_cli_{name}_{nanos}"))
+    }
+
+    #[tokio::test]
+    async fn policy_test_runner_executes_basic_suite() {
+        let test_path = temp_path("policy_test.yaml");
+        std::fs::write(
+            &test_path,
+            r#"
+name: "Basic Policy Tests"
+policy: "clawdstrike:default"
+suites:
+  - name: "Forbidden Path Guard"
+    tests:
+      - name: "blocks ssh key reads"
+        input:
+          eventType: file_read
+          data:
+            type: file
+            path: /home/user/.ssh/id_rsa
+            operation: read
+        expect:
+          denied: true
+          guard: forbidden_path
+          severity: critical
+      - name: "allows normal reads"
+        input:
+          eventType: file_read
+          data:
+            type: file
+            path: /app/src/main.rs
+            operation: read
+        expect:
+          allowed: true
+"#,
+        )
+        .expect("write test file");
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+
+        let code = cmd_policy_test(
+            test_path.to_string_lossy().to_string(),
+            false,
+            true,
+            true,
+            &mut out,
+            &mut err,
+        )
+        .await;
+
+        assert_eq!(code, ExitCode::Ok);
+        assert!(err.is_empty());
+
+        let v: serde_json::Value = serde_json::from_slice(&out).expect("valid json");
+        assert_eq!(v.get("command").and_then(|v| v.as_str()), Some("policy_test"));
+        assert_eq!(v.get("failed").and_then(|v| v.as_i64()), Some(0));
+        assert_eq!(v.get("passed").and_then(|v| v.as_i64()), Some(2));
+        assert!(v.get("coverage").is_some(), "expected coverage when enabled");
+    }
+}
