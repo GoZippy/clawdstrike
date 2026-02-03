@@ -59,7 +59,7 @@
 
 ## Overview
 
-> **Alpha Software** — This project is under active development and not yet published. Packages are not available on npm or crates.io. A full beta launch is planned for the coming week. APIs may change. Star/watch the repo to follow progress.
+> **Alpha Software** — This project is under active development and not yet published. Packages are not available on npm or crates.io. A full beta launch is planned for the coming week. APIs and import paths WILL change. Star/watch the repo to follow progress.
 
 Clawdstrike provides runtime security enforcement for agents, designed for developers building EDR solutions and security infrastructure on top of OpenClaw.
 
