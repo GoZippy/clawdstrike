@@ -8,7 +8,7 @@ Minimal, runtime-optional wrappers for Vercel AI SDK-style tools.
 npm install @clawdstrike/vercel-ai @clawdstrike/adapter-core
 ```
 
-## Usage
+## Usage (tool wrapping)
 
 ```ts
 import { createHushCliEngine } from '@clawdstrike/hush-cli-engine';
@@ -31,3 +31,23 @@ const tools = secureTools(
 await tools.bash.execute({ cmd: 'echo hello' });
 ```
 
+## Middleware-style API
+
+```ts
+import { createHushCliEngine } from '@clawdstrike/hush-cli-engine';
+import { createClawdstrikeMiddleware } from '@clawdstrike/vercel-ai';
+
+const engine = createHushCliEngine({ policyRef: 'default' });
+const security = createClawdstrikeMiddleware({
+  engine,
+  config: { blockOnViolation: true, injectPolicyCheckTool: true },
+});
+
+const tools = security.wrapTools({
+  bash: { async execute(input: { cmd: string }) { return input.cmd; } },
+});
+```
+
+## Errors
+
+Blocked tool calls throw `ClawdstrikeBlockedError` (includes `decision` and `toolName`).
