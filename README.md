@@ -50,22 +50,26 @@
   <span style="opacity:0.55;">&nbsp;&nbsp;&middot;&nbsp;&nbsp;</span>
   <a href="docs/src/getting-started/quick-start-python.md">Python</a>
   <span style="opacity:0.55;">&nbsp;&nbsp;&middot;&nbsp;&nbsp;</span>
+  <a href="packages/clawdstrike-openclaw/docs/getting-started.md">OpenClaw</a>
+  <span style="opacity:0.55;">&nbsp;&nbsp;&middot;&nbsp;&nbsp;</span>
   <a href="examples">Examples</a>
 </p>
 
 ---
 
-## What is Clawdstrike?
+## Overview
 
-Runtime security enforcement for AI agents. Composable guards, cryptographic receipts, and policy-driven access control at the tool boundary.
+> **Alpha Software** — This project is under active development and not yet published. Packages are not available on npm or crates.io. A full beta launch is planned for the coming week. APIs may change. Star/watch the repo to follow progress.
 
-**Guards** — Block sensitive paths, control network egress, detect secrets, validate patches, restrict tools, catch jailbreaks
+Clawdstrike provides runtime security enforcement for agents, designed for developers building EDR solutions and security infrastructure on top of OpenClaw.
 
-**Receipts** — Ed25519-signed attestations proving what was decided, under which policy, with what evidence
+<img src=".github/assets/sigils/boundary-light.svg#gh-light-mode-only" width="16" height="16" alt="" style="vertical-align:-3px;margin-right:6px;" /> <img src=".github/assets/sigils/boundary-dark.svg#gh-dark-mode-only" width="16" height="16" alt="" style="vertical-align:-3px;margin-right:6px;" />**Guards** — Block sensitive paths, control network egress, detect secrets, validate patches, restrict tools, catch jailbreaks
 
-**Multi-language** — Rust, TypeScript, Python, WebAssembly
+<img src=".github/assets/sigils/policy-light.svg#gh-light-mode-only" width="16" height="16" alt="" style="vertical-align:-3px;margin-right:6px;" /> <img src=".github/assets/sigils/policy-dark.svg#gh-dark-mode-only" width="16" height="16" alt="" style="vertical-align:-3px;margin-right:6px;" />**Receipts** — Ed25519-signed attestations proving what was decided, under which policy, with what evidence
 
-**Multi-framework** — OpenClaw, Vercel AI, LangChain, Claude Code, and more
+<img src=".github/assets/sigils/seal-light.svg#gh-light-mode-only" width="16" height="16" alt="" style="vertical-align:-3px;margin-right:6px;" /> <img src=".github/assets/sigils/seal-dark.svg#gh-dark-mode-only" width="16" height="16" alt="" style="vertical-align:-3px;margin-right:6px;" />**Multi-language** — Rust, TypeScript, Python, WebAssembly
+
+<img src=".github/assets/sigils/ruleset-light.svg#gh-light-mode-only" width="16" height="16" alt="" style="vertical-align:-3px;margin-right:6px;" /> <img src=".github/assets/sigils/ruleset-dark.svg#gh-dark-mode-only" width="16" height="16" alt="" style="vertical-align:-3px;margin-right:6px;" />**Multi-framework** — OpenClaw, Vercel AI, LangChain, Claude Code, and more
 
 ## Quick Start
 
@@ -84,13 +88,20 @@ TypeScript does not ship a full policy engine; use the Rust CLI/daemon for evalu
 
 ```typescript
 import { createHushCliEngine } from "@clawdstrike/hush-cli-engine";
-import { BaseToolInterceptor, createSecurityContext } from "@clawdstrike/adapter-core";
+import {
+  BaseToolInterceptor,
+  createSecurityContext,
+} from "@clawdstrike/adapter-core";
 
 const engine = createHushCliEngine({ policyRef: "default" });
 const interceptor = new BaseToolInterceptor(engine, { blockOnViolation: true });
 const ctx = createSecurityContext({ sessionId: "session-123" });
 
-const preflight = await interceptor.beforeExecute("bash", { cmd: "echo hello" }, ctx);
+const preflight = await interceptor.beforeExecute(
+  "bash",
+  { cmd: "echo hello" },
+  ctx
+);
 if (!preflight.proceed) throw new Error("Blocked by policy");
 ```
 
@@ -100,14 +111,14 @@ See `packages/clawdstrike-openclaw/docs/getting-started.md`.
 
 ## Highlights
 
-| Feature | Description |
-|---------|-------------|
-| **7 Built-in Guards** | Path, egress, secrets, patches, tools, prompt injection, jailbreak |
+| Feature                         | Description                                                                   |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| **7 Built-in Guards**           | Path, egress, secrets, patches, tools, prompt injection, jailbreak            |
 | **4-Layer Jailbreak Detection** | Heuristic + statistical + ML + optional LLM-as-judge with session aggregation |
-| **Output Sanitization** | Redact secrets, PII, internal data from LLM output with streaming support |
-| **Prompt Watermarking** | Embed signed provenance markers for attribution and forensics |
-| **Fail-Closed Design** | Invalid policies reject at load time; errors deny access |
-| **Signed Receipts** | Tamper-evident audit trail with Ed25519 signatures |
+| **Output Sanitization**         | Redact secrets, PII, internal data from LLM output with streaming support     |
+| **Prompt Watermarking**         | Embed signed provenance markers for attribution and forensics                 |
+| **Fail-Closed Design**          | Invalid policies reject at load time; errors deny access                      |
+| **Signed Receipts**             | Tamper-evident audit trail with Ed25519 signatures                            |
 
 ## Documentation
 
