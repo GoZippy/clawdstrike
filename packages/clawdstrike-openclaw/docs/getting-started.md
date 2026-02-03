@@ -182,10 +182,8 @@ extends: clawdstrike:ai-agent-minimal
 Available rulesets:
 - `clawdstrike:ai-agent-minimal` - Basic protection
 - `clawdstrike:ai-agent` - Standard development
-- `clawdstrike:strict` - Production environments
 
 ## Next Steps
 
-- See the [Policy Reference](./policy-reference.md) for all options
 - Check the [Examples](../examples/) directory
-- Read about [Advanced Configuration](./advanced.md)
+- Run `clawdstrike --help` to explore the plugin CLI surface

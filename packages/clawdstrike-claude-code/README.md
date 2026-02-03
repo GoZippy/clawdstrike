@@ -7,7 +7,7 @@ Use this at the layer that executes tools on behalf of the model.
 ## Install
 
 ```bash
-npm install @clawdstrike/claude-code @clawdstrike/adapter-core
+npm install @clawdstrike/claude-code @clawdstrike/adapter-core @clawdstrike/hush-cli-engine
 ```
 
 ## Usage

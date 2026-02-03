@@ -5,7 +5,7 @@ In-process tool-boundary hooks for OpenCode-style coding assistants.
 ## Install
 
 ```bash
-npm install @clawdstrike/opencode @clawdstrike/adapter-core
+npm install @clawdstrike/opencode @clawdstrike/adapter-core @clawdstrike/hush-cli-engine
 ```
 
 ## Usage

@@ -14,7 +14,7 @@ The `hush` binary is provided by the `hush-cli` crate.
 
 ## TypeScript / Python
 
-This repo contains experimental SDKs under `packages/`. They are not yet guaranteed to match the Rust policy schema or receipt schema described in this mdBook.
+This repo contains experimental SDKs under `packages/`. Receipts/crypto are intended to be compatible across languages, but full policy-evaluation parity with the Rust engine is not yet guaranteed.
 
 ## Next Steps
 

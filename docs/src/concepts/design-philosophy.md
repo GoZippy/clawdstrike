@@ -26,7 +26,7 @@ guards:
 
 Clawdstrike is one layer in a defense-in-depth strategy. It enforces policy at the **tool boundary**—the interface between your agent runtime and the actions it performs.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                     Your Agent Runtime                       │
 │  ┌─────────────────────────────────────────────────────┐    │
@@ -66,7 +66,7 @@ These are distinct concepts that should not be conflated:
 
 Receipts prove what Clawdstrike observed and decided under a specific policy. They do not prove that the underlying OS prevented all side effects. A signed receipt is only as strong as the integration.
 
-```rust
+```rust,ignore
 // Enforcement: your runtime decides based on GuardResult
 let result = engine.check_file_access("/etc/passwd", &ctx).await?;
 if !result.allowed {
@@ -93,7 +93,7 @@ This composability lets you:
 2. **Layer multiple checks.** A file write might pass `ForbiddenPathGuard` but fail `SecretLeakGuard`.
 3. **Add custom guards.** Extend `HushEngine` with your own guards via the `Guard` trait.
 
-```rust
+```rust,ignore
 // Guards evaluate in order, fail-fast or aggregate
 let report = engine.check_action_report(&action, &context).await?;
 for evidence in &report.evidence {
@@ -129,26 +129,19 @@ When detecting sensitive content (jailbreaks, secrets, PII), Clawdstrike:
 }
 ```
 
-## Multi-Language Parity
+## Multi-language support
 
-Clawdstrike maintains functional parity across Rust, TypeScript, and Python:
+Rust is the reference implementation for policy evaluation and enforcement. TypeScript and Python focus on:
 
-| Feature | Rust | TypeScript | Python |
-|---------|------|------------|--------|
-| Guards | Full | Full | Full |
-| Policy Engine | Full | Full | Full |
-| Receipts & Signing | Full | Full | Full |
-| Jailbreak Detection | Full | Full | Full |
-| Output Sanitization | Full | Full | Full |
+- **Interop** (crypto/receipts)
+- **Integration glue** (framework adapters)
 
-The Rust implementation is the reference. TypeScript and Python implementations use the same algorithms and produce compatible outputs.
+See [Multi-Language & Multi-Framework Support](./multi-language.md) for the current status by language and package.
 
-## Explicit Over Implicit
+## Explicit over implicit
 
-Clawdstrike prefers explicit configuration over magic behavior:
+Clawdstrike prefers explicit, auditable configuration:
 
-- **No `enabled: false`.** To disable a guard, configure it to allow everything explicitly.
-- **No hidden defaults.** Default patterns are documented in each guard's reference.
-- **No silent failures.** Invalid configuration fails loudly at load time.
-
-This explicitness makes policies auditable. You can read a policy file and understand exactly what it permits and denies.
+- **Unknown fields are rejected** (fail-closed) where parsing is security-critical.
+- **Invalid patterns fail at load time** (glob/regex validation), not at check time.
+- **Policy linting** (`hush policy lint`) catches risky defaults and common mistakes early.

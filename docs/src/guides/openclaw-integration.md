@@ -27,7 +27,9 @@ See [Schema Governance](../concepts/schema-governance.md) for the repo-wide vers
 - Validate policies before running agents:
 
 ```bash
-clawdstrike policy lint .hush/policy.yaml
+# The OpenClaw plugin ships its own Node CLI named `clawdstrike`.
+# Use `npx` to avoid confusion with the deprecated Rust `clawdstrike` binary.
+npx clawdstrike policy lint .hush/policy.yaml
 ```
 
 - Use `policy_check` for **preflight** decisions (before the agent attempts an action).

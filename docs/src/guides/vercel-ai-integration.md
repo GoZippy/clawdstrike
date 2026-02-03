@@ -1,360 +1,175 @@
 # Vercel AI SDK Integration
 
-Integrate Clawdstrike with the Vercel AI SDK for secure streaming AI applications.
+`@clawdstrike/vercel-ai` provides runtime-optional wrappers for the Vercel AI SDK:
+
+- Tool wrapping (block/modify/redact) via a `PolicyEngineLike`
+- Model wrapper (`wrapLanguageModel`) with optional prompt-security checks
+- React hook (`useSecureChat`) for guarding streaming tool calls in `ai/react`
+
+This package does **not** ship a policy engine. You provide one:
+
+- `@clawdstrike/hush-cli-engine` (shells out to the `hush` CLI), or
+- your own implementation of `PolicyEngineLike`.
 
 ## Installation
 
 ```bash
-npm install @clawdstrike/vercel-ai ai
+npm install @clawdstrike/vercel-ai @clawdstrike/hush-cli-engine ai
 ```
 
-## Overview
+If you use a provider package:
 
-The `@clawdstrike/vercel-ai` package provides:
+```bash
+npm install @ai-sdk/openai
+```
 
-- **Middleware** — Intercept and guard tool calls
-- **React Hooks** — Stream-safe tool guards for UI
-- **Secure Tool Wrappers** — Wrap tools with policy enforcement
-- **Error Handling** — Typed security errors
+## 1) Create an engine (policy evaluation)
 
-## Basic Middleware
+The simplest engine is `@clawdstrike/hush-cli-engine`, which calls `hush policy eval` under the hood.
 
-Add Clawdstrike as middleware to your AI calls:
+```ts
+import { createHushCliEngine } from '@clawdstrike/hush-cli-engine';
 
-```typescript
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
-import { createClawdstrikeMiddleware } from "@clawdstrike/vercel-ai";
+const engine = createHushCliEngine({
+  policyRef: 'default', // or 'strict', or a policy file path
+  // hushPath: '/path/to/hush',
+  // resolve: true, // resolve extends for file inputs
+});
+```
 
-const middleware = createClawdstrikeMiddleware({
-  ruleset: "ai-agent",
-  onViolation: (violation) => {
-    console.warn("Security violation:", violation);
+## 2) Create middleware and wrap tools/models
+
+```ts
+import { createClawdstrikeMiddleware } from '@clawdstrike/vercel-ai';
+
+const security = createClawdstrikeMiddleware({
+  engine,
+  config: {
+    blockOnViolation: true,
+    // Best-effort: depends on the AI SDK stream part shapes.
+    streamingEvaluation: true,
   },
 });
-
-export async function POST(req: Request) {
-  const { messages } = await req.json();
-
-  const result = await streamText({
-    model: openai("gpt-4"),
-    messages,
-    experimental_toolCallStreaming: true,
-    middleware,
-  });
-
-  return result.toAIStreamResponse();
-}
 ```
 
-## Secure Tool Definitions
+### Wrap tools
 
-Wrap your tools with security enforcement:
+`wrapTools` works with any “tool-like” object that has an async `execute()` function (including tools created via `ai`'s `tool()` helper).
 
-```typescript
-import { tool } from "ai";
-import { z } from "zod";
-import { secureTool } from "@clawdstrike/vercel-ai";
+```ts
+import { tool } from 'ai';
+import { z } from 'zod';
 
-// Define a tool
-const readFileTool = tool({
-  description: "Read a file from the filesystem",
-  parameters: z.object({
-    path: z.string().describe("Path to the file"),
+const tools = security.wrapTools({
+  bash: tool({
+    description: 'Run a command',
+    parameters: z.object({ cmd: z.string() }),
+    execute: async ({ cmd }) => `ran: ${cmd}`,
   }),
-  execute: async ({ path }) => {
-    const content = await fs.readFile(path, "utf-8");
-    return content;
-  },
-});
-
-// Wrap with security
-const secureReadFile = secureTool(readFileTool, {
-  guardType: "file_access",
-  ruleset: "strict",
-});
-
-// Use in your AI call
-const result = await generateText({
-  model: openai("gpt-4"),
-  tools: { readFile: secureReadFile },
-  prompt: "Read the config file",
 });
 ```
 
-## React Integration
+### Wrap a model
 
-Use the `useSecureChat` hook for client-side streaming with security:
+```ts
+import { openai } from '@ai-sdk/openai';
+
+const model = security.wrapLanguageModel(openai('gpt-4o-mini'));
+```
+
+Now pass `model` and `tools` to `generateText` / `streamText` as usual.
+
+## Prompt Security (P1)
+
+Prompt-security runs on model calls (not tool execution). Enable it via `config.promptSecurity`:
+
+```ts
+const security = createClawdstrikeMiddleware({
+  engine,
+  config: {
+    blockOnViolation: true,
+    streamingEvaluation: true,
+    promptSecurity: {
+      enabled: true,
+      mode: 'block', // 'warn' | 'audit'
+      applicationId: 'my-app',
+      jailbreakDetection: { enabled: true },
+      instructionHierarchy: { enabled: true },
+      outputSanitization: { enabled: true },
+      // Optional: embed a signed watermark marker in a system message:
+      watermarking: { enabled: false },
+    },
+  },
+});
+```
+
+Notes:
+
+- Prompt-security blocks throw `ClawdstrikePromptSecurityError` (no raw prompt text in error details).
+- Prompt-security findings are recorded in `security.getAuditLog()` as `prompt_security_*` audit events.
+
+## React: `useSecureChat`
+
+Guard tool calls for `ai/react` streaming chats.
+
+Note: `@clawdstrike/hush-cli-engine` shells out to the `hush` binary, so it is **server-only**. In the browser, use an engine that calls a server endpoint (or a `hushd` instance).
 
 ```tsx
-"use client";
+'use client';
 
-import { useSecureChat } from "@clawdstrike/vercel-ai/react";
+import { useSecureChat } from '@clawdstrike/vercel-ai/react';
+import type { PolicyEngineLike, PolicyEvent, Decision } from '@clawdstrike/adapter-core';
+
+const engine: PolicyEngineLike = {
+  async evaluate(event: PolicyEvent): Promise<Decision> {
+    const resp = await fetch('/api/policy/eval', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(event),
+    });
+    if (!resp.ok) {
+      throw new Error(`policy eval failed: ${resp.status}`);
+    }
+    return (await resp.json()) as Decision;
+  },
+};
 
 export function Chat() {
-  const { messages, input, handleInputChange, handleSubmit, securityStatus } =
-    useSecureChat({
-      api: "/api/chat",
-      onSecurityViolation: (violation) => {
-        toast.error(`Blocked: ${violation.reason}`);
-      },
-    });
+  const { messages, input, handleInputChange, handleSubmit, securityStatus } = useSecureChat({
+    api: '/api/chat',
+    engine,
+    securityConfig: { blockOnViolation: true },
+  });
 
   return (
     <div>
-      {securityStatus.blocked && (
-        <div className="alert alert-warning">
-          Security policy blocked a tool call
-        </div>
-      )}
-
-      <div className="messages">
-        {messages.map((m) => (
-          <div key={m.id} className={m.role}>
-            {m.content}
-          </div>
-        ))}
-      </div>
-
+      {securityStatus.blocked ? <p>Blocked by policy</p> : null}
       <form onSubmit={handleSubmit}>
         <input value={input} onChange={handleInputChange} />
         <button type="submit">Send</button>
       </form>
+      <pre>{JSON.stringify(messages, null, 2)}</pre>
     </div>
   );
 }
 ```
 
-## Streaming Tool Guards
+Example server endpoint for `/api/policy/eval` (Next.js route handler):
 
-Guard tool calls during streaming:
+```ts
+import type { PolicyEvent } from '@clawdstrike/adapter-core';
+import { createHushCliEngine } from '@clawdstrike/hush-cli-engine';
 
-```typescript
-import { streamText } from "ai";
-import { ClawdstrikeStreamGuard } from "@clawdstrike/vercel-ai";
-
-const guard = new ClawdstrikeStreamGuard({
-  ruleset: "ai-agent",
-  onToolCallStart: (toolCall) => {
-    console.log(`Tool starting: ${toolCall.name}`);
-  },
-  onToolCallBlocked: (toolCall, violation) => {
-    console.error(`Tool blocked: ${toolCall.name}`, violation);
-  },
-});
-
-const result = await streamText({
-  model: openai("gpt-4"),
-  messages,
-  tools: myTools,
-  onToolCall: guard.createHandler(),
-});
-```
-
-## Jailbreak Detection in Chat
-
-Add jailbreak detection to user input:
-
-```typescript
-import { createClawdstrikeMiddleware } from "@clawdstrike/vercel-ai";
-
-const middleware = createClawdstrikeMiddleware({
-  ruleset: "ai-agent",
-  jailbreakDetection: {
-    enabled: true,
-    blockThreshold: 70,
-    warnThreshold: 30,
-    sessionAggregation: true,
-  },
-  onJailbreakDetected: (result) => {
-    console.warn("Jailbreak attempt:", result.severity, result.signals);
-  },
-});
-```
-
-## Output Sanitization
-
-Sanitize LLM output before sending to clients:
-
-```typescript
-import { streamText } from "ai";
-import { createSanitizingTransform } from "@clawdstrike/vercel-ai";
-
-const result = await streamText({
-  model: openai("gpt-4"),
-  messages,
-});
-
-// Wrap the stream with sanitization
-const sanitizedStream = result.textStream.pipeThrough(
-  createSanitizingTransform({
-    categories: { secrets: true, pii: true },
-    onRedaction: (finding) => {
-      console.log(`Redacted: ${finding.type}`);
-    },
-  })
-);
-```
-
-## Full Example: Secure Chat API
-
-```typescript
-// app/api/chat/route.ts
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
-import {
-  createClawdstrikeMiddleware,
-  secureTool,
-  createSanitizingTransform,
-} from "@clawdstrike/vercel-ai";
-import { tool } from "ai";
-import { z } from "zod";
-
-// Secure tools
-const tools = {
-  readFile: secureTool(
-    tool({
-      description: "Read a file",
-      parameters: z.object({ path: z.string() }),
-      execute: async ({ path }) => fs.readFile(path, "utf-8"),
-    }),
-    { guardType: "file_access" }
-  ),
-
-  fetchUrl: secureTool(
-    tool({
-      description: "Fetch a URL",
-      parameters: z.object({ url: z.string() }),
-      execute: async ({ url }) => {
-        const res = await fetch(url);
-        return res.text();
-      },
-    }),
-    { guardType: "network_egress" }
-  ),
-};
-
-// Middleware
-const middleware = createClawdstrikeMiddleware({
-  ruleset: "ai-agent",
-  jailbreakDetection: { enabled: true },
-  signing: { enabled: true },
-});
+const engine = createHushCliEngine({ policyRef: 'default' });
 
 export async function POST(req: Request) {
-  const { messages, sessionId } = await req.json();
-
-  const result = await streamText({
-    model: openai("gpt-4"),
-    messages,
-    tools,
-    middleware,
-    experimental_toolCallStreaming: true,
-  });
-
-  // Sanitize output
-  const sanitizedStream = result.textStream.pipeThrough(
-    createSanitizingTransform({
-      categories: { secrets: true, pii: true },
-    })
-  );
-
-  return new Response(sanitizedStream, {
-    headers: { "Content-Type": "text/event-stream" },
-  });
+  const event = (await req.json()) as PolicyEvent;
+  const decision = await engine.evaluate(event);
+  return Response.json(decision);
 }
 ```
 
-## Configuration Options
+## Errors
 
-### Middleware Options
-
-```typescript
-interface ClawdstrikeMiddlewareOptions {
-  // Policy configuration
-  ruleset?: "default" | "strict" | "ai-agent" | "cicd" | "permissive";
-  policyFile?: string;
-  policy?: PolicyConfig;
-
-  // Jailbreak detection
-  jailbreakDetection?: {
-    enabled: boolean;
-    blockThreshold?: number;
-    warnThreshold?: number;
-    sessionAggregation?: boolean;
-  };
-
-  // Output sanitization
-  outputSanitization?: {
-    enabled: boolean;
-    categories?: { secrets?: boolean; pii?: boolean };
-  };
-
-  // Signing
-  signing?: {
-    enabled: boolean;
-    keyPair?: { privateKey: string; publicKey: string };
-  };
-
-  // Callbacks
-  onViolation?: (violation: SecurityViolation) => void;
-  onJailbreakDetected?: (result: JailbreakDetectionResult) => void;
-  onRedaction?: (finding: SensitiveDataFinding) => void;
-}
-```
-
-### Secure Tool Options
-
-```typescript
-interface SecureToolOptions {
-  guardType: "file_access" | "file_write" | "network_egress" | "mcp_tool";
-  ruleset?: string;
-  onBlocked?: (violation: SecurityViolation) => void;
-  failOpen?: boolean; // Default: false (fail closed)
-}
-```
-
-## Error Handling
-
-```typescript
-import {
-  SecurityViolationError,
-  JailbreakDetectedError,
-} from "@clawdstrike/vercel-ai";
-
-try {
-  const result = await streamText({
-    model: openai("gpt-4"),
-    messages,
-    middleware,
-  });
-} catch (error) {
-  if (error instanceof SecurityViolationError) {
-    return new Response(
-      JSON.stringify({
-        error: "security_violation",
-        violations: error.violations,
-      }),
-      { status: 403 }
-    );
-  }
-
-  if (error instanceof JailbreakDetectedError) {
-    return new Response(
-      JSON.stringify({
-        error: "jailbreak_detected",
-        severity: error.result.severity,
-      }),
-      { status: 400 }
-    );
-  }
-
-  throw error;
-}
-```
-
-## Next Steps
-
-- [LangChain Integration](./langchain-integration.md) — Use with LangChain
-- [Custom Guards](./custom-guards.md) — Create your own guards
-- [Output Sanitizer Reference](../reference/guards/output-sanitizer.md) — Full sanitizer docs
+- `ClawdstrikeBlockedError` — thrown when a tool is blocked (includes `toolName` + `decision`)
+- `ClawdstrikePromptSecurityError` — thrown when prompt-security blocks a model call

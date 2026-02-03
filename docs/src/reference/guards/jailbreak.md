@@ -81,7 +81,7 @@ Analyzes text properties that correlate with adversarial inputs:
 
 A lightweight linear model that aggregates signals:
 
-```
+```text
 score = sigmoid(
   -2.0
   + 2.5 * has_ignore_policy
@@ -149,7 +149,7 @@ if (result.blocked) {
 
 ### Rust
 
-```rust
+```rust,ignore
 use clawdstrike::jailbreak::{JailbreakGuard, JailbreakGuardConfig};
 
 let config = JailbreakGuardConfig::default();

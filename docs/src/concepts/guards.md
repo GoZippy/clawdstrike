@@ -6,7 +6,7 @@ Guards are small, focused checks that evaluate a single action against policy/co
 
 In Rust:
 
-```rust
+```rust,ignore
 #[async_trait]
 pub trait Guard: Send + Sync {
     fn name(&self) -> &str;
@@ -37,5 +37,6 @@ Clawdstrike ships with:
 - `PatchIntegrityGuard`
 - `McpToolGuard`
 - `PromptInjectionGuard`
+- `JailbreakGuard`
 
 See the [Guards reference](../reference/guards/README.md) for configs and details.

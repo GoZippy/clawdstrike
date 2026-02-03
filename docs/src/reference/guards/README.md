@@ -1,6 +1,6 @@
 # Guards Reference
 
-Clawdstrike ships with nine built-in guards plus utilities for output sanitization and watermarking. Guards evaluate a `GuardAction` plus `GuardContext` and return a `GuardResult`.
+Clawdstrike ships with seven built-in guards. Guards evaluate a `GuardAction` plus `GuardContext` and return a `GuardResult`.
 
 ## Built-in Guards
 
@@ -14,12 +14,12 @@ Clawdstrike ships with nine built-in guards plus utilities for output sanitizati
 | [PromptInjectionGuard](./prompt-injection.md) | Detect prompt-injection in untrusted text | `guards.prompt_injection` |
 | [JailbreakGuard](./jailbreak.md) | Detect jailbreak attempts with 4-layer analysis | `guards.jailbreak` |
 
-## Output Processing
+## Prompt-security utilities (not policy guards)
 
-| Component | Purpose | Config key |
-|-----------|---------|------------|
-| [Output Sanitizer](./output-sanitizer.md) | Redact secrets/PII from LLM output | `guards.output_sanitizer` |
-| [Watermarking](./watermarking.md) | Embed provenance markers in prompts | `guards.watermarking` |
+Some prompt-security features are implemented as standalone utilities and are wired into integrations (for example, `@clawdstrike/vercel-ai`):
+
+- [Output Sanitizer](./output-sanitizer.md) — redact secrets/PII from model output (including streaming)
+- [Watermarking](./watermarking.md) — embed signed provenance markers in prompts
 
 ## Action Coverage
 
@@ -70,7 +70,7 @@ guards:
 
 You can extend `HushEngine` with custom guards:
 
-```rust
+```rust,ignore
 use clawdstrike::{Guard, GuardAction, GuardContext, GuardResult};
 
 struct MyCustomGuard;

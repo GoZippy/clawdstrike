@@ -7,7 +7,7 @@ The intended integration is at the **tool boundary** (your agent runtime calls C
 
 ## System Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                                    HushEngine                                        │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │
@@ -56,7 +56,7 @@ The intended integration is at the **tool boundary** (your agent runtime calls C
 
 | Package | Description |
 |---------|-------------|
-| `@clawdstrike/sdk` | Core TypeScript SDK with full guard parity |
+| `@clawdstrike/sdk` | Crypto/receipts + a subset of guards + prompt-security utilities (no full policy engine) |
 | `@clawdstrike/adapter-core` | Framework-agnostic adapter interfaces |
 | `@clawdstrike/openclaw` | OpenClaw plugin |
 | `@clawdstrike/vercel-ai` | Vercel AI SDK integration |
@@ -67,7 +67,7 @@ The intended integration is at the **tool boundary** (your agent runtime calls C
 
 | Package | Description |
 |---------|-------------|
-| `hush-py` | Pure Python SDK with optional PyO3 bindings |
+| `hush` | Pure Python SDK (repo: `packages/hush-py`) |
 
 ## Data flow (typical integration)
 
@@ -127,7 +127,7 @@ For deeper integration scenarios, Clawdstrike provides Inline Reference Monitors
 
 IRMs integrate with the guard pipeline:
 
-```rust
+```rust,ignore
 use clawdstrike::irm::{IrmRouter, FilesystemIrm, NetworkIrm};
 
 let router = IrmRouter::new()

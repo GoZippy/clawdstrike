@@ -7,7 +7,7 @@ This package is intentionally **runtime-agnostic**: you wire it into the layer t
 ## Install
 
 ```bash
-npm install @clawdstrike/codex @clawdstrike/adapter-core
+npm install @clawdstrike/codex @clawdstrike/adapter-core @clawdstrike/hush-cli-engine
 ```
 
 ## Usage

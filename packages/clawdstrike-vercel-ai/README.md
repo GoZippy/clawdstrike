@@ -5,7 +5,7 @@ Minimal, runtime-optional wrappers for Vercel AI SDK-style tools.
 ## Install
 
 ```bash
-npm install @clawdstrike/vercel-ai @clawdstrike/adapter-core
+npm install @clawdstrike/vercel-ai @clawdstrike/hush-cli-engine ai
 ```
 
 ## Usage (tool wrapping)

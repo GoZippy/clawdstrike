@@ -1,386 +1,96 @@
 # LangChain Integration
 
-Integrate Clawdstrike with LangChain for secure agent applications.
+`@clawdstrike/langchain` is a small, runtime-agnostic wrapper layer for LangChain-style tools.
+
+- Wrap tools that implement `invoke()` or `_call()`
+- Optional callback handler hooks you can wire into LangChain's callback system
+- Optional LangGraph helpers for inserting a security checkpoint node
+
+This package does **not** ship a policy engine. You provide one:
+
+- `@clawdstrike/hush-cli-engine` (shells out to the `hush` CLI), or
+- your own implementation of `PolicyEngineLike`.
 
 ## Installation
 
 ```bash
-npm install @clawdstrike/langchain langchain
-# or
-pip install clawdstrike-langchain langchain
+npm install @clawdstrike/langchain @clawdstrike/hush-cli-engine @clawdstrike/adapter-core
 ```
 
-## Overview
+## Wrap tools (tool boundary)
 
-The `@clawdstrike/langchain` package provides:
+Wrap a single tool:
 
-- **Tool Wrappers** — Wrap LangChain tools with policy enforcement
-- **Chain Callbacks** — Monitor and guard chain execution
-- **Agent Interceptors** — Guard agent actions before execution
-- **Retriever Guards** — Secure RAG pipelines
+```ts
+import { createHushCliEngine } from '@clawdstrike/hush-cli-engine';
+import { BaseToolInterceptor } from '@clawdstrike/adapter-core';
+import { wrapTool } from '@clawdstrike/langchain';
 
-## TypeScript
+const engine = createHushCliEngine({ policyRef: 'default' });
+const interceptor = new BaseToolInterceptor(engine, { blockOnViolation: true });
 
-### Secure Tool Wrapper
-
-Wrap any LangChain tool with security enforcement:
-
-```typescript
-import { ClawdstrikeToolWrapper } from "@clawdstrike/langchain";
-import { ReadFileTool } from "langchain/tools";
-
-const readFile = new ReadFileTool();
-
-const secureReadFile = new ClawdstrikeToolWrapper(readFile, {
-  ruleset: "ai-agent",
-  guardType: "file_access",
-  onBlocked: (violation) => {
-    console.warn(`Tool blocked: ${violation.reason}`);
+const tool = {
+  name: 'bash',
+  async invoke(input: { cmd: string }) {
+    return `ran: ${input.cmd}`;
   },
-});
+};
 
-// Use in your agent
-const agent = createReactAgent({
-  llm: model,
-  tools: [secureReadFile],
-});
+const secureTool = wrapTool(tool, interceptor);
+await secureTool.invoke({ cmd: 'echo hello' });
 ```
 
-### Agent Interceptor
+Wrap an array of tools:
 
-Add security to the entire agent execution:
+```ts
+import { wrapTools } from '@clawdstrike/langchain';
 
-```typescript
-import { ClawdstrikeAgentInterceptor } from "@clawdstrike/langchain";
-
-const interceptor = new ClawdstrikeAgentInterceptor({
-  ruleset: "strict",
-  jailbreakDetection: {
-    enabled: true,
-    blockThreshold: 70,
-  },
-  outputSanitization: {
-    enabled: true,
-    categories: { secrets: true, pii: true },
-  },
-});
-
-const agent = createReactAgent({
-  llm: model,
-  tools: secureTools,
-});
-
-// Wrap agent execution
-const secureAgent = interceptor.wrap(agent);
-
-const result = await secureAgent.invoke({
-  input: userMessage,
-  sessionId: "session-123",
-});
+const secureTools = wrapTools([toolA, toolB], interceptor);
 ```
 
-### Chain Callbacks
+## Config convenience
 
-Monitor chain execution with security callbacks:
+If you want the wrapper to create its own interceptor:
 
-```typescript
-import { ClawdstrikeCallbackHandler } from "@clawdstrike/langchain";
+```ts
+import { createHushCliEngine } from '@clawdstrike/hush-cli-engine';
+import { wrapToolWithConfig } from '@clawdstrike/langchain';
 
-const callbacks = [
-  new ClawdstrikeCallbackHandler({
-    ruleset: "ai-agent",
-    onToolStart: (tool, input) => {
-      console.log(`Tool starting: ${tool.name}`);
-    },
-    onToolBlocked: (tool, violation) => {
-      console.error(`Tool blocked: ${tool.name}`, violation);
-    },
-    onChainEnd: (receipt) => {
-      // Save signed receipt for audit
-      saveReceipt(receipt);
-    },
-  }),
-];
+const engine = createHushCliEngine({ policyRef: 'default' });
+const tool = { name: 'bash', async _call() { return 'ok'; } };
 
-const result = await chain.invoke(
-  { input: userMessage },
-  { callbacks }
-);
+const wrapped = wrapToolWithConfig(tool, engine, { blockOnViolation: false });
+const stricter = wrapped.withConfig({ blockOnViolation: true });
 ```
 
-### Secure All Tools
+## Callback handler (in-process hooks)
 
-Wrap all tools in one call:
+`ClawdstrikeCallbackHandler` exposes explicit hook methods you can call from your runtime’s callback surface.
 
-```typescript
-import { secureAllTools } from "@clawdstrike/langchain";
+```ts
+import { createHushCliEngine } from '@clawdstrike/hush-cli-engine';
+import { ClawdstrikeCallbackHandler } from '@clawdstrike/langchain';
 
-const tools = [
-  new ReadFileTool(),
-  new WriteFileTool(),
-  new ShellTool(),
-  new RequestsTool(),
-];
+const engine = createHushCliEngine({ policyRef: 'default' });
+const handler = new ClawdstrikeCallbackHandler({ engine });
 
-const secureTools = secureAllTools(tools, {
-  ruleset: "ai-agent",
-  mappings: {
-    ReadFileTool: { guardType: "file_access" },
-    WriteFileTool: { guardType: "file_write" },
-    ShellTool: { guardType: "mcp_tool", toolName: "shell_exec" },
-    RequestsTool: { guardType: "network_egress" },
-  },
-});
+// Pseudocode: wire these into your callback implementation.
+await handler.handleToolStart({ name: 'bash' }, JSON.stringify({ cmd: 'ls' }), 'run-123');
+await handler.handleToolEnd('ok', 'run-123');
 ```
 
-## Python
+Audit events are available via `handler.getAuditEvents()`.
 
-### Secure Tool Wrapper
+## LangGraph helpers
 
-```python
-from clawdstrike_langchain import ClawdstrikeToolWrapper
-from langchain_community.tools import ReadFileTool
+If you use LangGraph, `@clawdstrike/langchain` also exports helpers like:
 
-read_file = ReadFileTool()
+- `createSecurityCheckpoint`
+- `addSecurityRouting`
+- `wrapToolNode`
 
-secure_read_file = ClawdstrikeToolWrapper(
-    read_file,
-    ruleset="ai-agent",
-    guard_type="file_access",
-    on_blocked=lambda v: print(f"Blocked: {v.reason}")
-)
+See the package README for the latest helper surface.
 
-# Use in agent
-agent = create_react_agent(llm=model, tools=[secure_read_file])
-```
+## Errors
 
-### Agent Interceptor
-
-```python
-from clawdstrike_langchain import ClawdstrikeAgentInterceptor
-
-interceptor = ClawdstrikeAgentInterceptor(
-    ruleset="strict",
-    jailbreak_detection={
-        "enabled": True,
-        "block_threshold": 70
-    },
-    output_sanitization={
-        "enabled": True,
-        "categories": {"secrets": True, "pii": True}
-    }
-)
-
-agent = create_react_agent(llm=model, tools=secure_tools)
-secure_agent = interceptor.wrap(agent)
-
-result = await secure_agent.ainvoke({
-    "input": user_message,
-    "session_id": "session-123"
-})
-```
-
-### Chain Callbacks
-
-```python
-from clawdstrike_langchain import ClawdstrikeCallbackHandler
-
-callbacks = [
-    ClawdstrikeCallbackHandler(
-        ruleset="ai-agent",
-        on_tool_start=lambda t, i: print(f"Tool: {t.name}"),
-        on_tool_blocked=lambda t, v: print(f"Blocked: {t.name}"),
-        on_chain_end=lambda r: save_receipt(r)
-    )
-]
-
-result = await chain.ainvoke(
-    {"input": user_message},
-    config={"callbacks": callbacks}
-)
-```
-
-### RAG Pipeline Security
-
-Guard retrieval in RAG pipelines:
-
-```python
-from clawdstrike_langchain import SecureRetriever
-
-# Wrap your retriever
-secure_retriever = SecureRetriever(
-    retriever=vector_store.as_retriever(),
-    output_sanitization={
-        "enabled": True,
-        "categories": {"secrets": True, "pii": True}
-    },
-    # Don't return documents containing secrets
-    filter_sensitive=True
-)
-
-# Use in RAG chain
-rag_chain = (
-    {"context": secure_retriever, "question": RunnablePassthrough()}
-    | prompt
-    | llm
-    | StrOutputParser()
-)
-```
-
-## LCEL Integration
-
-Use with LangChain Expression Language:
-
-```typescript
-import { ClawdstrikeRunnable } from "@clawdstrike/langchain";
-
-const securityGuard = new ClawdstrikeRunnable({
-  ruleset: "ai-agent",
-  jailbreakDetection: { enabled: true },
-});
-
-const chain = securityGuard
-  .pipe(prompt)
-  .pipe(model)
-  .pipe(new ClawdstrikeRunnable({
-    outputSanitization: { enabled: true },
-  }))
-  .pipe(outputParser);
-
-const result = await chain.invoke({ input: userMessage });
-```
-
-## Configuration
-
-### Tool Wrapper Options
-
-```typescript
-interface ClawdstrikeToolWrapperOptions {
-  ruleset?: string;
-  policyFile?: string;
-  guardType: "file_access" | "file_write" | "network_egress" | "mcp_tool";
-  toolName?: string;  // For mcp_tool guard
-  onBlocked?: (violation: SecurityViolation) => void;
-  failOpen?: boolean;  // Default: false
-}
-```
-
-### Agent Interceptor Options
-
-```typescript
-interface ClawdstrikeAgentInterceptorOptions {
-  ruleset?: string;
-  policyFile?: string;
-
-  jailbreakDetection?: {
-    enabled: boolean;
-    blockThreshold?: number;
-    warnThreshold?: number;
-    sessionAggregation?: boolean;
-  };
-
-  outputSanitization?: {
-    enabled: boolean;
-    categories?: { secrets?: boolean; pii?: boolean };
-  };
-
-  signing?: {
-    enabled: boolean;
-  };
-
-  onViolation?: (violation: SecurityViolation) => void;
-  onJailbreakDetected?: (result: JailbreakDetectionResult) => void;
-}
-```
-
-## Full Example: Secure Agent
-
-```typescript
-import { ChatOpenAI } from "@langchain/openai";
-import { createReactAgent, AgentExecutor } from "langchain/agents";
-import {
-  ClawdstrikeAgentInterceptor,
-  secureAllTools,
-  ClawdstrikeCallbackHandler,
-} from "@clawdstrike/langchain";
-
-// Create model
-const model = new ChatOpenAI({ model: "gpt-4" });
-
-// Define and secure tools
-const tools = [
-  new ReadFileTool(),
-  new WriteFileTool(),
-  new ShellTool(),
-];
-
-const secureTools = secureAllTools(tools, {
-  ruleset: "strict",
-  mappings: {
-    ReadFileTool: { guardType: "file_access" },
-    WriteFileTool: { guardType: "file_write" },
-    ShellTool: { guardType: "mcp_tool", toolName: "shell_exec" },
-  },
-});
-
-// Create agent
-const agent = createReactAgent({
-  llm: model,
-  tools: secureTools,
-});
-
-// Add interceptor
-const interceptor = new ClawdstrikeAgentInterceptor({
-  ruleset: "strict",
-  jailbreakDetection: { enabled: true },
-  outputSanitization: { enabled: true },
-  signing: { enabled: true },
-});
-
-const secureAgent = interceptor.wrap(
-  new AgentExecutor({ agent, tools: secureTools })
-);
-
-// Run with callbacks
-const callbacks = [
-  new ClawdstrikeCallbackHandler({
-    onChainEnd: (receipt) => saveAuditReceipt(receipt),
-  }),
-];
-
-const result = await secureAgent.invoke(
-  { input: userMessage },
-  { callbacks, configurable: { sessionId: "session-123" } }
-);
-```
-
-## Error Handling
-
-```typescript
-import {
-  SecurityViolationError,
-  JailbreakDetectedError,
-} from "@clawdstrike/langchain";
-
-try {
-  const result = await secureAgent.invoke({ input: userMessage });
-} catch (error) {
-  if (error instanceof SecurityViolationError) {
-    console.error("Security violation:", error.violations);
-    return "Sorry, that action isn't allowed.";
-  }
-
-  if (error instanceof JailbreakDetectedError) {
-    console.error("Jailbreak detected:", error.result.severity);
-    return "I can't process that request.";
-  }
-
-  throw error;
-}
-```
-
-## Next Steps
-
-- [Vercel AI Integration](./vercel-ai-integration.md) — Use with Vercel AI SDK
-- [Custom Guards](./custom-guards.md) — Create your own guards
-- [Audit Logging](./audit-logging.md) — Set up audit trails
+Blocked tool calls throw `ClawdstrikeViolationError` (includes `decision` and `toolName`).

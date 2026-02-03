@@ -4,7 +4,7 @@ Clawdstrike guards are plain Rust types that implement `clawdstrike::guards::Gua
 
 ## Implementing a guard
 
-```rust
+```rust,ignore
 use async_trait::async_trait;
 use clawdstrike::guards::{Guard, GuardAction, GuardContext, GuardResult};
 
@@ -28,9 +28,15 @@ impl Guard for AlwaysWarn {
 
 ## Using a custom guard today
 
-`HushEngine` currently evaluates the built-in guard set. If you want to add custom guards, the supported approach today is to:
+`HushEngine` supports registering extra guards programmatically.
 
-1. Run your custom guard alongside `HushEngine::check_action_report`, and
-2. Aggregate results in your own runtime layer.
+Extra guards run **after** the built-in guard set (built-ins first, extras last).
 
-Extending `HushEngine` to support a pluggable guard registry is planned work (see `docs/plans/`).
+```rust,ignore
+use clawdstrike::{HushEngine, Policy};
+
+let policy = Policy::from_yaml_file("policy.yaml")?;
+let engine = HushEngine::with_policy(policy).with_extra_guard(Box::new(AlwaysWarn));
+```
+
+Policy-driven configuration for custom guards (registries/marketplaces) is planned work (see `docs/plans/`).

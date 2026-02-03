@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/medica/clawdstrike/actions"><img src="https://img.shields.io/github/actions/workflow/status/medica/clawdstrike/ci.yml?branch=main&style=flat-square&logo=github&label=CI" alt="CI Status"></a>
+  <a href="https://github.com/backbay-labs/hushclaw/actions"><img src="https://img.shields.io/github/actions/workflow/status/backbay-labs/hushclaw/ci.yml?branch=main&style=flat-square&logo=github&label=CI" alt="CI Status"></a>
   <a href="https://crates.io/crates/clawdstrike"><img src="https://img.shields.io/crates/v/clawdstrike?style=flat-square&logo=rust" alt="crates.io"></a>
   <a href="https://docs.rs/clawdstrike"><img src="https://img.shields.io/docsrs/clawdstrike?style=flat-square&logo=docs.rs" alt="docs.rs"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
@@ -69,42 +69,40 @@ Runtime security enforcement for AI agents. Composable guards, cryptographic rec
 
 ## Quick Start
 
-```typescript
-// openclaw.config.ts
-import { clawdstrike } from "@clawdstrike/openclaw";
+### CLI (Rust)
 
-export default {
-  plugins: [
-    clawdstrike({
-      ruleset: "ai-agent",
-      signing: { enabled: true },
-    }),
-  ],
-};
+```bash
+cargo install --path crates/hush-cli
+
+hush policy list
+hush check --action-type file --ruleset strict ~/.ssh/id_rsa
 ```
 
-Or use standalone:
+### TypeScript (tool boundary)
+
+TypeScript does not ship a full policy engine; use the Rust CLI/daemon for evaluation. `@clawdstrike/hush-cli-engine` requires `hush` on your PATH (or pass `hushPath`).
 
 ```typescript
-import { HushEngine, JailbreakDetector } from "@clawdstrike/sdk";
+import { createHushCliEngine } from "@clawdstrike/hush-cli-engine";
+import { BaseToolInterceptor, createSecurityContext } from "@clawdstrike/adapter-core";
 
-const engine = new HushEngine({ ruleset: "strict" });
-const detector = new JailbreakDetector();
+const engine = createHushCliEngine({ policyRef: "default" });
+const interceptor = new BaseToolInterceptor(engine, { blockOnViolation: true });
+const ctx = createSecurityContext({ sessionId: "session-123" });
 
-// Check file access
-const result = await engine.checkFileAccess("~/.ssh/id_rsa", ctx);
-if (!result.allowed) throw new Error("Blocked by policy");
-
-// Detect jailbreaks
-const detection = await detector.detect(userMessage, sessionId);
-if (detection.blocked) return "I can't process that request.";
+const preflight = await interceptor.beforeExecute("bash", { cmd: "echo hello" }, ctx);
+if (!preflight.proceed) throw new Error("Blocked by policy");
 ```
+
+### OpenClaw plugin
+
+See `packages/clawdstrike-openclaw/docs/getting-started.md`.
 
 ## Highlights
 
 | Feature | Description |
 |---------|-------------|
-| **9 Built-in Guards** | Path, egress, secrets, patches, tools, prompt injection, jailbreak, output sanitization, watermarking |
+| **7 Built-in Guards** | Path, egress, secrets, patches, tools, prompt injection, jailbreak |
 | **4-Layer Jailbreak Detection** | Heuristic + statistical + ML + optional LLM-as-judge with session aggregation |
 | **Output Sanitization** | Redact secrets, PII, internal data from LLM output with streaming support |
 | **Prompt Watermarking** | Embed signed provenance markers for attribution and forensics |
@@ -123,7 +121,7 @@ if (detection.blocked) return "I can't process that request.";
 We take security seriously. If you discover a vulnerability:
 
 - **For sensitive issues**: Email [connor@backbay.io](mailto:connor@backbay.io) with details. We aim to respond within 48 hours.
-- **For non-sensitive issues**: Open a [GitHub issue](https://github.com/backbay-labs/clawdstrike/issues) with the `security` label.
+- **For non-sensitive issues**: Open a [GitHub issue](https://github.com/backbay-labs/hushclaw/issues) with the `security` label.
 
 ## Contributing
 

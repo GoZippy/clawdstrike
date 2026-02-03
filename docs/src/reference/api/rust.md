@@ -14,7 +14,7 @@ If you depend on a published version, use `0.1.0`. If you are working from a che
 
 ## Quick start: evaluate actions + create a receipt
 
-```rust
+```rust,ignore
 use clawdstrike::{GuardContext, HushEngine, Policy};
 
 #[tokio::main]
@@ -45,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
 
 `HushEngine::check_action_report` returns a `GuardReport` with per-guard results and an aggregated verdict:
 
-```rust
+```rust,ignore
 use clawdstrike::{guards::GuardAction, GuardContext, HushEngine};
 
 async fn report(engine: &HushEngine) -> anyhow::Result<()> {
@@ -62,7 +62,7 @@ async fn report(engine: &HushEngine) -> anyhow::Result<()> {
 
 All guards implement `clawdstrike::guards::Guard` and operate over `GuardAction` + `GuardContext`.
 
-```rust
+```rust,ignore
 use clawdstrike::guards::{ForbiddenPathGuard, Guard, GuardAction, GuardContext};
 
 async fn check_one() {

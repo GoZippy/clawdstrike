@@ -41,6 +41,11 @@ hush check --json --action-type egress --ruleset default api.github.com:443 | jq
   - `--merged` resolves `extends` (useful for files).
 - `hush policy validate <FILE>` — validate YAML + patterns.
   - `--resolve` resolves `extends` and prints the merged policy.
+- `hush policy diff <LEFT> <RIGHT> [--resolve] [--json]` — structural diff for rulesets or policy files.
+- `hush policy lint <FILE> [--resolve] [--json]` — policy linting (risky defaults, common mistakes).
+- `hush policy test <SUITE.yaml>` — run a policy test suite.
+- `hush policy eval <POLICY_REF> <EVENT.json|-> [--resolve] [--json]` — evaluate a canonical `PolicyEvent`.
+- `hush policy simulate <POLICY_REF> [EVENTS.jsonl|-] [--json|--jsonl|--summary]` — run a stream of events.
 
 Examples:
 
@@ -51,6 +56,7 @@ hush policy show ./policy.yaml
 hush policy show --merged ./policy.yaml
 hush policy validate ./policy.yaml
 hush policy validate --resolve ./policy.yaml
+hush policy diff default strict --json
 ```
 
 ## Receipts and crypto

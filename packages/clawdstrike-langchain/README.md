@@ -5,7 +5,7 @@ Baseline wrappers for LangChain-style tools. No hard runtime dependency on LangC
 ## Install
 
 ```bash
-npm install @clawdstrike/langchain @clawdstrike/adapter-core
+npm install @clawdstrike/langchain @clawdstrike/adapter-core @clawdstrike/hush-cli-engine
 ```
 
 ## Usage
