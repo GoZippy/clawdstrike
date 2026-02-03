@@ -1713,7 +1713,7 @@ mod policy_pac_contract {
             v.get("summary")
                 .and_then(|v| v.get("blocked"))
                 .and_then(|v| v.as_i64()),
-            Some(1)
+            Some(2)
         );
     }
 }

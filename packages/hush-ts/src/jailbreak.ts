@@ -69,7 +69,22 @@ export interface JailbreakDetectorConfig {
   llmJudge?: (input: string) => Promise<number>;
 }
 
-const DEFAULT_CFG: Required<Omit<JailbreakDetectorConfig, "llmJudge">> = {
+type ResolvedJailbreakLayers = {
+  heuristic: boolean;
+  statistical: boolean;
+  ml: boolean;
+  llmJudge: boolean;
+};
+
+type ResolvedJailbreakDetectorConfig = {
+  layers: ResolvedJailbreakLayers;
+  blockThreshold: number;
+  warnThreshold: number;
+  maxInputBytes: number;
+  sessionAggregation: boolean;
+};
+
+const DEFAULT_CFG: ResolvedJailbreakDetectorConfig = {
   layers: { heuristic: true, statistical: true, ml: true, llmJudge: false },
   blockThreshold: 70,
   warnThreshold: 30,
@@ -174,15 +189,17 @@ function sigmoid(x: number): number {
 }
 
 export class JailbreakDetector {
-  private readonly cfg: Required<JailbreakDetectorConfig>;
+  private readonly cfg: ResolvedJailbreakDetectorConfig;
   private readonly judge?: (input: string) => Promise<number>;
   private readonly sessions = new Map<string, { messagesSeen: number; suspiciousCount: number; cumulativeRisk: number }>();
 
   constructor(config: JailbreakDetectorConfig = {}) {
     this.cfg = {
-      ...DEFAULT_CFG,
-      ...config,
       layers: { ...DEFAULT_CFG.layers, ...(config.layers ?? {}) },
+      blockThreshold: config.blockThreshold ?? DEFAULT_CFG.blockThreshold,
+      warnThreshold: config.warnThreshold ?? DEFAULT_CFG.warnThreshold,
+      maxInputBytes: config.maxInputBytes ?? DEFAULT_CFG.maxInputBytes,
+      sessionAggregation: config.sessionAggregation ?? DEFAULT_CFG.sessionAggregation,
     };
     this.judge = config.llmJudge;
   }
@@ -309,4 +326,3 @@ export class JailbreakDetector {
     };
   }
 }
-

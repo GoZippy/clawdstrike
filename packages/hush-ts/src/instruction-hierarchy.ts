@@ -104,7 +104,44 @@ const DEFAULT_MARKERS = {
   externalEnd: "[/UNTRUSTED_CONTENT]",
 } as const;
 
-function cfgWithDefaults(cfg: HierarchyEnforcerConfig): Required<HierarchyEnforcerConfig> {
+type ResolvedMarkers = {
+  systemStart: string;
+  systemEnd: string;
+  userStart: string;
+  userEnd: string;
+  toolStart: string;
+  toolEnd: string;
+  externalStart: string;
+  externalEnd: string;
+};
+
+type ResolvedRules = {
+  blockOverrides: boolean;
+  blockImpersonation: boolean;
+  wrapExternalContent: boolean;
+  isolateToolInstructions: boolean;
+  neutralizeFakeDelimiters: boolean;
+};
+
+type ResolvedReminders = {
+  enabled: boolean;
+  frequency: number;
+  text: string;
+};
+
+type ResolvedContext = {
+  maxContextBytes: number;
+};
+
+type ResolvedHierarchyEnforcerConfig = {
+  strictMode: boolean;
+  markers: ResolvedMarkers;
+  rules: ResolvedRules;
+  reminders: ResolvedReminders;
+  context: ResolvedContext;
+};
+
+function cfgWithDefaults(cfg: HierarchyEnforcerConfig): ResolvedHierarchyEnforcerConfig {
   return {
     strictMode: cfg.strictMode ?? false,
     markers: { ...DEFAULT_MARKERS, ...(cfg.markers ?? {}) },
@@ -138,7 +175,7 @@ const RE_PROMPT_LEAK =
 const RE_FAKE_DELIMS = /(\[\/?SYSTEM\]|<\/?system>|<\|im_start\|>|<\|im_end\|>)/gi;
 const RE_TOOL_COMMANDY = /\b(run|execute|invoke|call)\b.{0,32}\b(tool|command|bash|shell)\b/ims;
 
-function wrap(level: InstructionLevel, content: string, m: Required<HierarchyEnforcerConfig>["markers"]): string {
+function wrap(level: InstructionLevel, content: string, m: ResolvedMarkers): string {
   switch (level) {
     case InstructionLevel.Platform:
     case InstructionLevel.System:
@@ -160,7 +197,7 @@ function totalBytes(messages: HierarchyMessage[]): number {
 
 export class InstructionHierarchyEnforcer {
   private seq = 0;
-  private cfg: Required<HierarchyEnforcerConfig>;
+  private cfg: ResolvedHierarchyEnforcerConfig;
 
   constructor(config: HierarchyEnforcerConfig = {}) {
     this.cfg = cfgWithDefaults(config);
