@@ -7,5 +7,8 @@ pub mod audit;
 pub mod auth;
 pub mod config;
 pub mod metrics;
+pub mod policy_event;
 pub mod rate_limit;
+pub mod remote_extends;
 pub mod state;
+pub mod tls;

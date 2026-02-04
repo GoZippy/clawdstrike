@@ -32,6 +32,15 @@ cors_enabled: true
 # Maximum audit entries to keep (0 = unlimited)
 max_audit_entries: 100000
 
+# Audit encryption (optional)
+# Stores the `metadata` blob encrypted at rest (searchable columns remain plaintext).
+# Generate a key with: `openssl rand -hex 32 > /etc/hushd/audit.key`
+# audit:
+#   encryption:
+#     enabled: true
+#     key_source: file
+#     key_path: /etc/hushd/audit.key
+
 # Optional: forward audit events to external sinks (in addition to the SQLite ledger)
 audit_forward:
   enabled: false
@@ -55,7 +64,7 @@ audit_forward:
     #   api_key: "${ELASTIC_API_KEY}"
     #   index: "clawdstrike-audit"
 
-# TLS configuration (not implemented in hushd yet; terminate TLS at a reverse proxy)
+# TLS configuration (optional; enable native TLS in hushd)
 # tls:
 #   cert_path: /etc/hushd/cert.pem
 #   key_path: /etc/hushd/key.pem

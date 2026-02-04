@@ -4,6 +4,7 @@ use clawdstrike::{PolicyBundle, SignedPolicyBundle};
 use hush_core::{Keypair, PublicKey};
 
 use crate::policy_diff::{load_policy_from_arg, ResolvedPolicySource};
+use crate::remote_extends::RemoteExtendsConfig;
 use crate::{CliJsonError, ExitCode, PolicyBundleCommands, PolicySource, CLI_JSON_VERSION};
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -36,6 +37,7 @@ struct PolicyBundleVerifyJsonOutput {
 
 pub fn cmd_policy_bundle(
     command: PolicyBundleCommands,
+    remote_extends: &RemoteExtendsConfig,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> ExitCode {
@@ -51,6 +53,7 @@ pub fn cmd_policy_bundle(
         } => cmd_policy_bundle_build(
             policy_ref,
             resolve,
+            remote_extends,
             key,
             output,
             embed_pubkey,
@@ -72,6 +75,7 @@ pub fn cmd_policy_bundle(
 fn cmd_policy_bundle_build(
     policy_ref: String,
     resolve: bool,
+    remote_extends: &RemoteExtendsConfig,
     key: String,
     output: String,
     embed_pubkey: bool,
@@ -80,7 +84,7 @@ fn cmd_policy_bundle_build(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> ExitCode {
-    let loaded = match load_policy_from_arg(&policy_ref, resolve) {
+    let loaded = match load_policy_from_arg(&policy_ref, resolve, remote_extends) {
         Ok(v) => v,
         Err(e) => {
             let code = crate::policy_error_exit_code(&e.source);

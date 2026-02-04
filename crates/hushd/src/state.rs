@@ -13,6 +13,7 @@ use crate::auth::AuthStore;
 use crate::config::Config;
 use crate::metrics::Metrics;
 use crate::rate_limit::RateLimitState;
+use crate::remote_extends::{RemoteExtendsResolverConfig, RemotePolicyResolver};
 
 /// Event broadcast for SSE streaming
 #[derive(Clone, Debug)]
@@ -51,19 +52,31 @@ pub struct AppState {
 }
 
 impl AppState {
+    fn load_policy_from_config(config: &Config) -> anyhow::Result<Policy> {
+        if let Some(ref path) = config.policy_path {
+            let content = std::fs::read_to_string(path)?;
+            let resolver = RemotePolicyResolver::new(RemoteExtendsResolverConfig::from_config(
+                &config.remote_extends,
+            ))?;
+            return Ok(Policy::from_yaml_with_extends_resolver(
+                &content,
+                Some(path.as_path()),
+                &resolver,
+            )?);
+        }
+
+        Ok(RuleSet::by_name(&config.ruleset)?
+            .ok_or_else(|| anyhow::anyhow!("Unknown ruleset: {}", config.ruleset))?
+            .policy)
+    }
+
     /// Create new application state
     pub async fn new(config: Config) -> anyhow::Result<Self> {
         // Load policy
-        let policy = if let Some(ref path) = config.policy_path {
-            Policy::from_yaml_file_with_extends(path)?
-        } else {
-            RuleSet::by_name(&config.ruleset)?
-                .ok_or_else(|| anyhow::anyhow!("Unknown ruleset: {}", config.ruleset))?
-                .policy
-        };
+        let policy = Self::load_policy_from_config(&config)?;
 
-        // Create engine
-        let mut engine = HushEngine::with_policy(policy);
+        // Create engine (fail closed if custom guards are requested but unavailable)
+        let mut engine = HushEngine::builder(policy).build()?;
 
         // Load signing key
         if let Some(ref key_path) = config.signing_key {
@@ -79,12 +92,14 @@ impl AppState {
         }
 
         // Create audit ledger
-        let ledger = AuditLedger::new(&config.audit_db)?;
-        let ledger = if config.max_audit_entries > 0 {
-            ledger.with_max_entries(config.max_audit_entries)
-        } else {
-            ledger
-        };
+        let mut ledger = AuditLedger::new(&config.audit_db)?;
+        if let Some(key) = config.audit_encryption_key()? {
+            ledger = ledger.with_encryption_key(key)?;
+            tracing::info!("Audit encryption enabled");
+        }
+        if config.max_audit_entries > 0 {
+            ledger = ledger.with_max_entries(config.max_audit_entries);
+        }
         let ledger = Arc::new(ledger);
 
         // Optional audit forwarding pipeline
@@ -112,7 +127,7 @@ impl AppState {
         }
 
         // Create rate limiter state
-        let rate_limit = RateLimitState::new(&config.rate_limit);
+        let rate_limit = RateLimitState::new(&config.rate_limit, metrics.clone());
         if config.rate_limit.enabled {
             tracing::info!(
                 requests_per_second = config.rate_limit.requests_per_second,
@@ -160,6 +175,7 @@ impl AppState {
     pub fn record_audit_event(&self, event: AuditEvent) {
         self.metrics.inc_audit_event();
         if let Err(err) = self.ledger.record(&event) {
+            self.metrics.inc_audit_write_failure();
             tracing::warn!(error = %err, "Failed to record audit event");
         }
         if let Some(forwarder) = &self.audit_forwarder {
@@ -169,13 +185,7 @@ impl AppState {
 
     /// Reload policy from config
     pub async fn reload_policy(&self) -> anyhow::Result<()> {
-        let policy = if let Some(ref path) = self.config.policy_path {
-            Policy::from_yaml_file_with_extends(path)?
-        } else {
-            RuleSet::by_name(&self.config.ruleset)?
-                .ok_or_else(|| anyhow::anyhow!("Unknown ruleset: {}", self.config.ruleset))?
-                .policy
-        };
+        let policy = Self::load_policy_from_config(self.config.as_ref())?;
 
         // Preserve the existing signing keypair to keep receipts verifiable across reloads.
         let mut engine = self.engine.write().await;
@@ -186,7 +196,7 @@ impl AppState {
             engine.keypair().cloned()
         };
 
-        let mut new_engine = HushEngine::with_policy(policy);
+        let mut new_engine = HushEngine::builder(policy).build()?;
         new_engine = match keypair {
             Some(keypair) => new_engine.with_keypair(keypair),
             None => new_engine.with_generated_keypair(),
