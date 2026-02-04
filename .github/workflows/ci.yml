@@ -345,6 +345,53 @@ jobs:
       - name: OpenClaw E2E (simulated runtime)
         run: npm run e2e
 
+  agent-framework-integrations:
+    name: Agent Framework Integrations (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Adapter Core
+            dir: packages/clawdstrike-adapter-core
+          - name: Hush CLI Engine
+            dir: packages/clawdstrike-hush-cli-engine
+          - name: Codex
+            dir: packages/clawdstrike-codex
+          - name: OpenCode
+            dir: packages/clawdstrike-opencode
+          - name: Claude Code
+            dir: packages/clawdstrike-claude-code
+          - name: Vercel AI
+            dir: packages/clawdstrike-vercel-ai
+          - name: LangChain
+            dir: packages/clawdstrike-langchain
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.dir }}
+        run: npm ci
+
+      - name: Type check
+        working-directory: ${{ matrix.dir }}
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: ${{ matrix.dir }}
+        run: npm run build
+
+      - name: Test
+        working-directory: ${{ matrix.dir }}
+        run: npm test
+
   python-sdk:
     name: Python SDK
     runs-on: ubuntu-latest
