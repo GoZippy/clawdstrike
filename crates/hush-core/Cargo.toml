@@ -14,7 +14,7 @@ readme = "../../README.md"
 ed25519-dalek.workspace = true
 sha2.workspace = true
 sha3.workspace = true
-rand.workspace = true
+rand_core.workspace = true
 hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -22,8 +22,11 @@ ryu.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
 [dev-dependencies]
-proptest = "1.4"
+proptest = "1.9"
 
 [features]
 default = []
