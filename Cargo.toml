@@ -4,6 +4,7 @@ members = [
     "crates/hush-core",
     "crates/hush-proxy",
     "crates/clawdstrike",
+    "crates/hush-certification",
     "crates/hush-cli",
     "crates/hushd",
     "crates/hush-wasm",
@@ -109,6 +110,7 @@ jsonwebtoken = "9"
 hush-core = { path = "crates/hush-core", version = "0.1.0" }
 hush-proxy = { path = "crates/hush-proxy", version = "0.1.0" }
 clawdstrike = { path = "crates/clawdstrike", version = "0.1.0" }
+hush-certification = { path = "crates/hush-certification", version = "0.1.0" }
 
 [profile.release]
 lto = true

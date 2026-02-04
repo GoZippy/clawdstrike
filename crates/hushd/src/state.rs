@@ -4,8 +4,11 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex, Notify, RwLock};
 
 use clawdstrike::{HushEngine, Policy, RuleSet};
-use hush_core::Keypair;
-use hush_core::PublicKey;
+use hush_certification::audit::AuditLedgerV2;
+use hush_certification::certification::{IssuerConfig, SqliteCertificationStore};
+use hush_certification::evidence::SqliteEvidenceExportStore;
+use hush_certification::webhooks::SqliteWebhookStore;
+use hush_core::{Keypair, PublicKey};
 
 use crate::audit::forward::AuditForwarder;
 use crate::audit::{AuditEvent, AuditLedger};
@@ -34,6 +37,7 @@ use crate::siem::manager::{
 use crate::siem::threat_intel::guard::ThreatIntelGuard;
 use crate::siem::threat_intel::service::{ThreatIntelService, ThreatIntelState};
 use crate::siem::types::{SecurityEvent, SecurityEventContext};
+use crate::v1_rate_limit::V1RateLimitState;
 
 /// Event broadcast for SSE streaming
 #[derive(Clone, Debug)]
@@ -49,10 +53,22 @@ pub struct AppState {
     pub engine: Arc<RwLock<HushEngine>>,
     /// Audit ledger
     pub ledger: Arc<AuditLedger>,
+    /// Audit ledger v2 (hash-chained)
+    pub audit_v2: Arc<AuditLedgerV2>,
     /// Optional audit forwarder (fan-out to external sinks)
     pub audit_forwarder: Option<AuditForwarder>,
     /// Prometheus-style metrics
     pub metrics: Arc<Metrics>,
+    /// Certification store (issue/verify/revoke)
+    pub certification_store: Arc<SqliteCertificationStore>,
+    /// Evidence export job store
+    pub evidence_exports: Arc<SqliteEvidenceExportStore>,
+    /// Webhook store (/v1/webhooks)
+    pub webhook_store: Arc<SqliteWebhookStore>,
+    /// Evidence exports directory
+    pub evidence_dir: std::path::PathBuf,
+    /// Issuer metadata for badge signing
+    pub issuer: IssuerConfig,
     /// Event broadcaster
     pub event_tx: broadcast::Sender<DaemonEvent>,
     /// Canonical security event broadcaster (for SIEM/SOAR exporters)
@@ -83,6 +99,8 @@ pub struct AppState {
     pub started_at: chrono::DateTime<chrono::Utc>,
     /// Rate limiter state
     pub rate_limit: RateLimitState,
+    /// Tiered `/v1` rate limiter state
+    pub v1_rate_limit: V1RateLimitState,
     /// Identity-based rate limiter (sliding window, SQLite baseline)
     pub identity_rate_limiter: Arc<IdentityRateLimiter>,
     /// Threat intel state (if enabled)
@@ -166,6 +184,18 @@ impl AppState {
             ledger = ledger.with_max_entries(config.max_audit_entries);
         }
         let ledger = Arc::new(ledger);
+
+        // Create audit ledger v2 + certification stores (share the same SQLite file by default).
+        let audit_v2 = Arc::new(AuditLedgerV2::new(&config.audit_db)?);
+        let certification_store = Arc::new(SqliteCertificationStore::new(&config.audit_db)?);
+        let evidence_exports = Arc::new(SqliteEvidenceExportStore::new(&config.audit_db)?);
+        let webhook_store = Arc::new(SqliteWebhookStore::new(&config.audit_db)?);
+        let evidence_dir = config
+            .audit_db
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("evidence_exports");
+        let issuer = IssuerConfig::default();
 
         // Optional audit forwarding pipeline
         let audit_forward_config = config.audit_forward.resolve_env_refs()?;
@@ -252,6 +282,8 @@ impl AppState {
                 "Rate limiting enabled"
             );
         }
+
+        let v1_rate_limit = V1RateLimitState::default();
 
         // Generate session ID
         let session_id = uuid::Uuid::new_v4().to_string();
@@ -412,8 +444,14 @@ impl AppState {
         let state = Self {
             engine: Arc::new(RwLock::new(engine)),
             ledger,
+            audit_v2,
             audit_forwarder,
             metrics,
+            certification_store,
+            evidence_exports,
+            webhook_store,
+            evidence_dir,
+            issuer,
             event_tx,
             security_event_tx,
             security_ctx,
@@ -429,6 +467,7 @@ impl AppState {
             session_id,
             started_at: chrono::Utc::now(),
             rate_limit,
+            v1_rate_limit,
             identity_rate_limiter,
             threat_intel_state,
             threat_intel_task: Arc::new(Mutex::new(threat_intel_task)),
