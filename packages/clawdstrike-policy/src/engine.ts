@@ -1,4 +1,4 @@
-import type { Decision, PolicyEngineLike, PolicyEvent } from '@clawdstrike/adapter-core';
+import type { Decision, DecisionStatus, PolicyEngineLike, PolicyEvent } from '@clawdstrike/adapter-core';
 
 import { AsyncGuardRuntime } from './async/runtime.js';
 import type { GuardResult, Severity } from './async/types.js';
@@ -156,17 +156,16 @@ function customGuardError(guardName: string, err: unknown): GuardResult {
 }
 
 function decisionFromOverall(overall: GuardResult): Decision {
-  const denied = !overall.allowed;
-  const warn = overall.allowed && overall.severity === 'medium';
+  const status: DecisionStatus = overall.allowed
+    ? overall.severity === 'medium'
+      ? 'warn'
+      : 'allow'
+    : 'deny';
 
-  const out: Decision = {
-    allowed: overall.allowed,
-    denied,
-    warn,
-  };
+  const out: Decision = { status };
 
   // Align with hush JSON: omit guard/severity for plain allow.
-  if (denied || warn) {
+  if (status !== 'allow') {
     out.guard = overall.guard;
     out.severity = overall.severity as any;
   }
