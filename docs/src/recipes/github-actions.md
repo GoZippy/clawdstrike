@@ -1,6 +1,6 @@
 # GitHub Actions
 
-Use the `hush` CLI in CI to validate policy files and keep rulesets/examples from drifting.
+Use the `clawdstrike` CLI in CI to validate policy files and keep rulesets/examples from drifting.
 
 ## Validate a policy file
 
@@ -22,11 +22,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install hush
+      - name: Install clawdstrike CLI
         run: cargo install --path crates/hush-cli
 
       - name: Validate policy
-        run: hush policy validate --resolve .hush/policy.yaml
+        run: clawdstrike policy validate --resolve .hush/policy.yaml
 ```
 
 ## Recommended CI baseline
