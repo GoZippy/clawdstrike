@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@clawdstrike/adapter-core": "file:../clawdstrike-adapter-core",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.3.2",
     "lru-cache": "^11.2.2"
   },
   "devDependencies": {
